@@ -4695,7 +4695,7 @@ class SweepConfig(
                                     layout = BoxLayout(this, BoxLayout.Y_AXIS)
                                     border = JBUI.Borders.empty(8, 16)
                                     add(
-                                        JLabel("<html><b>Sweep API URL</b></html>").apply {
+                                        JLabel("<html><b>OpenAI Compatible API URL</b></html>").apply {
                                             border = JBUI.Borders.empty(0, 4, 4, 0)
                                         },
                                     )
@@ -4705,7 +4705,7 @@ class SweepConfig(
                                         },
                                     )
                                     add(
-                                        createCommentLabel("The Sweep API endpoint (e.g., http://localhost:8080)").apply {
+                                        createCommentLabel("OpenAI-compatible API endpoint (e.g., http://localhost:1234 for LM Studio)").apply {
                                             border = JBUI.Borders.empty(4, 4, 0, 0)
                                             withSweepFont(project, scale = 0.9f)
                                         },

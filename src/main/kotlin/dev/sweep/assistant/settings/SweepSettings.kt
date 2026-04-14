@@ -242,7 +242,10 @@ class SweepSettings : PersistentStateComponent<SweepSettings> {
      */
     val hasBeenSet: Boolean
         get() =
-            if (SweepSettingsParser.isCloudEnvironment()) {
+            // Local autocomplete mode with native engine doesn't need any API tokens
+            if (autocompleteLocalMode && autocompleteLocalNativeEngine) {
+                true
+            } else if (SweepSettingsParser.isCloudEnvironment()) {
                 githubToken != DEFAULT_GITHUB_TOKEN
             } else {
                 githubToken != DEFAULT_GITHUB_TOKEN && baseUrl != DEFAULT_SWEEP_URL

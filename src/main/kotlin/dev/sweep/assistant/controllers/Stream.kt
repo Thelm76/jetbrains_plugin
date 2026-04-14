@@ -194,6 +194,8 @@ class Stream(
 
     private var markdownDisplay: MarkdownDisplay? = null
     private var connection: HttpURLConnection? = null
+    @Volatile
+    private var activeAgentService: dev.sweep.assistant.services.OpenAIAgentService? = null
     private var shouldHideStopButton: Boolean = true
     private var streamingJob: Job? by Delegates.observable(null) { _, oldJob, newJob ->
         // update listeners when stream state has changed
@@ -275,6 +277,227 @@ class Stream(
         SweepMetaData.getInstance().chatWithoutSearch++
 
         var finalMessage: Message? = null
+
+        // For non-Sweep backends (LM Studio, Ollama, etc.), use OpenAI-compatible API
+        if (!dev.sweep.assistant.services.OpenAIChatService.isSweepBackend()) {
+            try {
+                currentMarkdownDisplay.startStreaming()
+                var selectedModel = SweepComponent.getSelectedModelId(project)
+                    ?: sessionMessageList.selectedModel
+                // "auto" is a Sweep-specific concept — for OpenAI endpoints, use the first available model
+                if (selectedModel == null || selectedModel == "auto" || selectedModel.isEmpty()) {
+                    val available = dev.sweep.assistant.services.OpenAIChatService.getInstance().fetchModels()
+                    selectedModel = available.values.firstOrNull() ?: ""
+                }
+
+                logger.info("[OpenAI] Starting chat with model='$selectedModel', ${sessionMessageList.snapshot().size} messages")
+
+                // Build context from current file, included files, and editor state
+                val contextParts = mutableListOf<String>()
+
+                // Get cursor position for current file
+                val cursorInfo = com.intellij.openapi.application.ApplicationManager.getApplication().runReadAction<String?> {
+                    try {
+                        val editor = com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project)
+                            .selectedTextEditor
+                        if (editor != null) {
+                            val offset = editor.caretModel.offset
+                            val line = editor.document.getLineNumber(offset) + 1
+                            val col = offset - editor.document.getLineStartOffset(line - 1) + 1
+                            "Cursor is at line $line, column $col"
+                        } else null
+                    } catch (_: Exception) { null }
+                }
+
+                // Add current file context with cursor info
+                if (effectiveCurrentFilePath != null) {
+                    val currentFileContent = readFile(project, effectiveCurrentFilePath, maxLines = 500, maxChars = 50000)
+                    if (currentFileContent != null) {
+                        val lang = effectiveCurrentFilePath.substringAfterLast('.', "")
+                        val header = "Current file: `$effectiveCurrentFilePath`" +
+                            (cursorInfo?.let { " ($it)" } ?: "")
+                        contextParts.add("$header\n```$lang\n$currentFileContent\n```")
+                    }
+                }
+
+                // Add included/mentioned files
+                val addedFiles = mutableSetOf(effectiveCurrentFilePath)
+                for (value in includedFiles.values) {
+                    val filePath = TutorialPage.normalizeTutorialPath(value)
+                    if (filePath in addedFiles) continue
+                    val fileContent = readFile(project, filePath, maxLines = 500, maxChars = 50000)
+                    if (fileContent != null) {
+                        val lang = filePath.substringAfterLast('.', "")
+                        contextParts.add("File: `$filePath`\n```$lang\n$fileContent\n```")
+                        addedFiles.add(filePath)
+                    }
+                }
+
+                // Add mentioned files from the latest user message
+                sessionMessageList.getLastUserMessage()?.mentionedFiles?.forEach { mentionedFile ->
+                    val filePath = TutorialPage.normalizeTutorialPath(mentionedFile.relativePath)
+                    if (filePath !in addedFiles) {
+                        val fileContent = readFile(project, filePath, maxLines = 500, maxChars = 50000)
+                        if (fileContent != null) {
+                            val lang = filePath.substringAfterLast('.', "")
+                            contextParts.add("File: `$filePath`\n```$lang\n$fileContent\n```")
+                            addedFiles.add(filePath)
+                        }
+                    }
+                }
+
+                // Get working directory and repo info
+                val workingDir = project.basePath ?: ""
+
+                // Build system message with context
+                val isAgentMode = currentMode.lowercase() == "agent"
+                val systemPrompt = buildString {
+                    if (isAgentMode) {
+                        append("You are an expert coding agent integrated into a JetBrains IDE. ")
+                        append("You can read files, search code, edit files, and run shell commands to help the user.\n\n")
+                        append("When you need to make changes, use the available tools. ")
+                        append("Read the relevant files first, then make targeted edits using str_replace.\n\n")
+                    } else {
+                        append("You are an expert coding assistant integrated into a JetBrains IDE. ")
+                    }
+                    append("You help the user understand, modify, and debug code.\n\n")
+                    append("Guidelines:\n")
+                    append("- When suggesting code changes, always include the complete modified code in a fenced code block with the language specified.\n")
+                    append("- Include the file path as a comment at the top of the code block, e.g. `// filepath: src/main.py`\n")
+                    append("- Be concise. Explain what you changed and why.\n")
+                    append("- If the user asks to fix a bug, explain the root cause before the fix.\n")
+                    append("- When showing diffs, use unified diff format.\n")
+                    append("- IMPORTANT: Never use LaTeX math notation like $...$ or \\\\(...\\\\). The output is rendered as plain markdown without LaTeX support. Use Unicode math symbols instead: × ÷ ± ≤ ≥ ≠ ≈ √ ∑ ∏ ∫ π θ α β γ ² ³ ⁴ ₀ ₁ ₂ → ← ∈ ∉ ∅ ∞ ∧ ∨.\n")
+                    if (workingDir.isNotEmpty()) {
+                        append("\nProject directory: $workingDir\n")
+                    }
+                    if (isAgentMode) {
+                        // In agent mode, only mention file names — the model can read_file if needed
+                        val fileNames = mutableListOf<String>()
+                        if (effectiveCurrentFilePath != null) fileNames.add(effectiveCurrentFilePath)
+                        for (value in includedFiles.values) {
+                            val fp = TutorialPage.normalizeTutorialPath(value)
+                            if (fp != effectiveCurrentFilePath) fileNames.add(fp)
+                        }
+                        if (fileNames.isNotEmpty()) {
+                            append("\nThe user currently has these files open:\n")
+                            fileNames.forEach { append("- $it\n") }
+                            append("\nUse read_file to examine their contents when needed.\n")
+                        }
+                    } else if (contextParts.isNotEmpty()) {
+                        // In chat mode, include full file contents for context
+                        append("\nThe user is working with the following files:\n\n")
+                        append(contextParts.joinToString("\n\n"))
+                    }
+                }
+
+                // Convert messages to OpenAI format, prepending system message
+                val openAIMessages = mutableListOf(
+                    dev.sweep.assistant.services.OpenAIChatService.ChatMessage("system", systemPrompt),
+                )
+                openAIMessages.addAll(sessionMessageList.snapshot().map { msg ->
+                    dev.sweep.assistant.services.OpenAIChatService.ChatMessage(
+                        role = msg.role.name.lowercase(),
+                        content = msg.content,
+                    )
+                })
+
+                // Create empty assistant message with empty annotations for code replacements
+                val assistantMessage = Message(
+                    role = MessageRole.ASSISTANT,
+                    content = "",
+                    annotations = dev.sweep.assistant.data.Annotations(),
+                )
+                onMessageUpdated(assistantMessage)
+
+                logger.info("[OpenAI] System prompt length=${systemPrompt.length}, mode=$currentMode, agent=$isAgentMode, sending ${openAIMessages.size} messages to ${dev.sweep.assistant.settings.SweepSettings.getInstance().baseUrl}")
+
+                if (isAgentMode) {
+                    // Agent mode: multi-turn loop with tool calling
+                    // Only send system prompt + the latest user message to avoid
+                    // the model trying to redo earlier chat-mode responses with tools
+                    val agentService = dev.sweep.assistant.services.OpenAIAgentService(project)
+                    activeAgentService = agentService
+                    val latestUserMessage = openAIMessages.lastOrNull { it.role == "user" }
+                    val agentMessages = mutableListOf(
+                        dev.sweep.assistant.services.OpenAIAgentService.AgentMessage("system", systemPrompt),
+                    )
+                    if (latestUserMessage != null) {
+                        agentMessages.add(
+                            dev.sweep.assistant.services.OpenAIAgentService.AgentMessage("user", latestUserMessage.content)
+                        )
+                    }
+
+                    agentService.runAgentLoop(
+                        messages = agentMessages,
+                        model = selectedModel ?: "",
+                        onTextChunk = { chunk ->
+                            assistantMessage.content += chunk
+                            onMessageUpdated(assistantMessage)
+                        },
+                        onToolCallStart = { toolName, params ->
+                            assistantMessage.content += "\n\n> **Using tool:** `$toolName`"
+                            if (params.isNotEmpty()) {
+                                val paramsStr = params.entries.joinToString(", ") { "${it.key}=${it.value.take(50)}" }
+                                assistantMessage.content += " ($paramsStr)"
+                            }
+                            assistantMessage.content += "\n"
+                            onMessageUpdated(assistantMessage)
+                        },
+                        onToolCallResult = { toolName, result, success ->
+                            val statusEmoji = if (success) "+" else "!"
+                            val preview = result.take(200).replace("\n", " ")
+                            assistantMessage.content += "> [$statusEmoji] `$toolName` result: $preview\n"
+                            onMessageUpdated(assistantMessage)
+                        },
+                        onDone = {
+                            logger.info("[OpenAI Agent] Loop completed, total length=${assistantMessage.content.length}")
+                        },
+                        onError = { e ->
+                            logger.warn("[OpenAI Agent] Error: ${e.message}", e)
+                            assistantMessage.content += "\n\n**Error:** ${e.message}"
+                            onMessageUpdated(assistantMessage)
+                        },
+                        isCancelled = { cancelledByUser },
+                        conversationId = currentConversationId,
+                    )
+                } else {
+                    // Chat mode: simple streaming without tool calling
+                    dev.sweep.assistant.services.OpenAIChatService.getInstance().streamChatCompletion(
+                        messages = openAIMessages,
+                        model = selectedModel ?: "",
+                        onChunk = { chunk ->
+                            assistantMessage.content += chunk
+                            onMessageUpdated(assistantMessage)
+                        },
+                        onDone = {
+                            logger.info("[OpenAI] Stream completed, total length=${assistantMessage.content.length}")
+                        },
+                        onError = { e ->
+                            logger.warn("[OpenAI] Stream error: ${e.message}", e)
+                            assistantMessage.content += "\n\n**Error:** ${e.message}"
+                            onMessageUpdated(assistantMessage)
+                        },
+                        isCancelled = { cancelledByUser },
+                    )
+                }
+
+                // Post-process: extract code blocks and generate codeReplacements for Apply button
+                enrichMessageWithCodeReplacements(assistantMessage)
+
+                // Final update
+                onMessageUpdated(assistantMessage)
+                currentMarkdownDisplay.stopStreaming()
+                // Notify stream state service that streaming is done (hides stop button)
+                StreamStateService.getInstance(project).notify(false, false, false, currentConversationId)
+            } catch (e: Exception) {
+                logger.warn("[OpenAI] Chat failed: ${e.message}", e)
+                currentMarkdownDisplay.stopStreaming()
+                StreamStateService.getInstance(project).notify(false, false, false, currentConversationId)
+            }
+            return
+        }
+
         try {
             // Use longer timeouts for streaming chat requests
             // - 30s to establish connection (standard)
@@ -1115,7 +1338,54 @@ class Stream(
         return latestMessage
     }
 
+    /**
+     * Post-process an assistant message:
+     * 1. Extract <think>...</think> blocks into reasoning annotations
+     * 2. Generate CodeReplacement annotations from code blocks for the "Apply" button
+     */
+    private fun enrichMessageWithCodeReplacements(message: Message) {
+        try {
+            // Extract <think> blocks (used by Qwen, DeepSeek, etc.)
+            val thinkPattern = """<think>([\s\S]*?)</think>""".toRegex()
+            val thinkMatch = thinkPattern.find(message.content)
+            if (thinkMatch != null) {
+                val thinkingContent = thinkMatch.groupValues[1].trim()
+                message.content = message.content.replace(thinkMatch.value, "").trimStart('\n')
+                // Store thinking in annotations via the mutable codeReplacements list
+                // (thinking is val so we can't set it directly on existing message)
+                // The thinking content will be visible as a quote block instead
+                if (thinkingContent.isNotEmpty()) {
+                    message.content = "<details><summary>Reasoning</summary>\n\n$thinkingContent\n\n</details>\n\n${message.content}"
+                }
+            }
+
+            // Generate code replacement annotations for the Apply button
+            val ann = message.annotations ?: return
+            val blocks = dev.sweep.assistant.views.parseMarkdownBlocks(message, project)
+            val codeBlocks = blocks.filterIsInstance<dev.sweep.assistant.views.MarkdownBlock.CodeBlock>()
+            if (codeBlocks.isEmpty()) return
+
+            codeBlocks.forEachIndexed { index, block ->
+                if (block.path.isNotEmpty() && block.code.isNotEmpty()) {
+                    message.annotations?.codeReplacements?.add(
+                        dev.sweep.assistant.data.CodeReplacement(
+                            codeBlockIndex = index,
+                            filePath = block.path,
+                            codeBlockContent = block.code,
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            logger.debug("[OpenAI] Failed to enrich message: ${e.message}")
+        }
+    }
+
     fun stop(isUserInitiated: Boolean = true) {
+        // Cancel any active agent HTTP connection
+        activeAgentService?.cancelActiveRequest()
+        activeAgentService = null
+
         logger.info(
             "[Stream.stop] Stopping stream: conversationId=$sessionConversationId, isUserInitiated=$isUserInitiated, hasJob=${streamingJob != null}",
         )

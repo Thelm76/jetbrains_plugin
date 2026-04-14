@@ -2,19 +2,16 @@ package dev.sweep.assistant.components
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.TopGap
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.JBUI
+import dev.sweep.assistant.services.LocalAutocompleteServerManager
 import dev.sweep.assistant.services.SweepProjectService
-import dev.sweep.assistant.settings.SweepSettings
-import dev.sweep.assistant.settings.SweepSettingsParser
 import dev.sweep.assistant.theme.SweepColors
 import dev.sweep.assistant.theme.SweepIcons
 import dev.sweep.assistant.theme.SweepIcons.scale
-import dev.sweep.assistant.utils.SweepConstants.TOOLWINDOW_NAME
 import dev.sweep.assistant.views.RoundedButton
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
@@ -32,31 +29,28 @@ class WelcomeScreen(
                     icon(SweepIcons.BigSweepIcon.scale(80f)).align(AlignX.CENTER)
                 }
                 row {
-                    text("Welcome!")
+                    text("Sweep Autocomplete OSS")
                         .applyToComponent {
                             font = font.deriveFont(java.awt.Font.BOLD, font.size * 1.2f)
                         }.align(AlignX.CENTER)
                 }.topGap(TopGap.SMALL)
                 row {
-                    text("Please sign in below:").applyToComponent { font = font.deriveFont(font.size * 1.1f) }.align(AlignX.CENTER)
+                    text(
+                        """
+                        <div style='text-align: center;'>
+                        Local AI code autocomplete powered by<br>
+                        llama.cpp with next-edit suggestion models.
+                        </div>
+                        """.trimIndent(),
+                    ).applyToComponent { font = font.deriveFont(font.size * 1.0f) }.align(AlignX.CENTER)
                 }
                 row {
                     cell(
                         RoundedButton(
-                            text = " Sign in",
+                            text = " Start Local Server",
                             parentDisposable = parentDisposable,
                             onClick = {
-                                val isCloudEnvironment = SweepSettingsParser.isCloudEnvironment()
-                                if (isCloudEnvironment) {
-                                    // Trigger Sweep OAuth flow
-                                    ToolWindowManager
-                                        .getInstance(project)
-                                        .getToolWindow(TOOLWINDOW_NAME)
-                                        ?.hide()
-                                    SweepSettings.getInstance().initiateGitHubAuth(project)
-                                } else {
-                                    SweepConfig.getInstance(project).showConfigPopup()
-                                }
+                                LocalAutocompleteServerManager.getInstance().startServerInTerminal(project)
                             },
                         ).apply {
                             icon = SweepIcons.UserIcon.scale(16f)
@@ -67,14 +61,36 @@ class WelcomeScreen(
                         },
                     ).align(AlignX.CENTER)
                 }.topGap(TopGap.SMALL)
+                row {
+                    cell(
+                        RoundedButton(
+                            text = " Configure Settings",
+                            parentDisposable = parentDisposable,
+                            onClick = {
+                                SweepConfig.getInstance(project).showConfigPopup()
+                            },
+                        ).apply {
+                            font = font.deriveFont(font.size * 1.0f)
+                            border = JBUI.Borders.empty(4, 16)
+                        },
+                    ).align(AlignX.CENTER)
+                }.topGap(TopGap.SMALL)
 
                 row {
+                    val installHint = if (System.getProperty("os.name").lowercase().contains("mac")) {
+                        "Install llama.cpp: <code>brew install llama.cpp</code>"
+                    } else {
+                        "Install llama.cpp from <a href='https://github.com/ggml-org/llama.cpp#build'>github.com/ggml-org/llama.cpp</a>"
+                    }
                     text(
                         """
-                        <div style='text-align: center; font-size: 1.1em;'>
-                        Sweep features:<br>
-                        <a href='https://docs.sweep.dev/agent'>Agent</a><br>
-                        <a href='https://docs.sweep.dev/autocomplete'>Autocomplete</a>
+                        <div style='text-align: center; font-size: 0.95em;'>
+                        <b>Quick start:</b><br>
+                        1. $installHint<br>
+                        2. Click "Start Local Server" above<br>
+                        3. Start editing code — suggestions appear automatically<br>
+                        <br>
+                        Choose model size and runtime in Settings.<br>
                         </div>
                         """.trimIndent(),
                     ).align(AlignX.CENTER)
