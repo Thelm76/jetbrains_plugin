@@ -3,10 +3,6 @@ package dev.sweep.assistant.services
 import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.project.Project
-import dev.sweep.assistant.agent.tools.ToolType
-import dev.sweep.assistant.data.CompletedToolCall
-import dev.sweep.assistant.data.ToolCall
 import dev.sweep.assistant.settings.SweepSettings
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -15,11 +11,12 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * OpenAI-compatible agent service with function calling support.
- * Executes a multi-turn agent loop: sends messages → model responds with tool calls
- * → executes tools → sends results back → repeats until model gives a text response.
+ * OpenAI-compatible chat client with function-calling support.
+ * Streams a single completion turn; the multi-turn agent loop and tool
+ * execution live in [dev.sweep.assistant.controllers.Stream] and dispatch
+ * through the existing SweepAgent pipeline.
  */
-class OpenAIAgentService(private val project: Project) {
+class OpenAIAgentService {
     private val logger = Logger.getInstance(OpenAIAgentService::class.java)
     private val gson = Gson()
 
@@ -158,144 +155,14 @@ class OpenAIAgentService(private val project: Project) {
         val toolCalls: List<ParsedToolCall>? = null, // For assistant messages with tool calls
     )
 
-    /**
-     * Run the agent loop: stream responses, execute tool calls, send results back.
-     *
-     * @param messages Initial conversation messages (including system prompt)
-     * @param model The model ID
-     * @param onTextChunk Called with each text chunk for live display
-     * @param onToolCallStart Called when a tool execution starts (for UI feedback)
-     * @param onToolCallResult Called when a tool finishes (for UI feedback)
-     * @param onDone Called when the agent loop completes
-     * @param onError Called on error
-     * @param isCancelled Check for cancellation
-     * @param conversationId The conversation ID for tool execution context
-     */
-    fun runAgentLoop(
-        messages: MutableList<AgentMessage>,
-        model: String,
-        onTextChunk: (String) -> Unit,
-        onToolCallStart: (String, Map<String, String>) -> Unit,
-        onToolCallResult: (String, String, Boolean) -> Unit,
-        onDone: () -> Unit,
-        onError: (Exception) -> Unit,
-        isCancelled: () -> Boolean,
-        conversationId: String,
-    ) {
-        var turns = 0
-        var lastToolCallSignature = "" // Track last tool call to detect exact loops
-        var sameToolNameCount = 0 // Track consecutive calls to same tool
-        var lastToolName = ""
-
-        while (turns < MAX_AGENT_TURNS && !isCancelled()) {
-            turns++
-            logger.info("[Agent] Turn $turns, ${messages.size} messages")
-
-            // Log the last few messages to debug tool call loop issues
-            val recentMessages = messages.takeLast(3)
-            recentMessages.forEach { msg ->
-                logger.info("[Agent] Message: role=${msg.role}, content=${msg.content?.take(100) ?: "null"}, toolCalls=${msg.toolCalls?.size ?: 0}, toolCallId=${msg.toolCallId}")
-            }
-
-            val response = try {
-                streamWithToolCalls(messages, model, onTextChunk, isCancelled)
-            } catch (e: Exception) {
-                if (isCancelled()) { onDone(); return }
-                onError(e)
-                return
-            }
-
-            if (isCancelled()) {
-                onDone()
-                return
-            }
-
-            when {
-                response.toolCalls.isNotEmpty() -> {
-                    // Add assistant message WITH tool_calls to conversation
-                    // The OpenAI API requires the assistant message to echo back the tool calls
-                    messages.add(AgentMessage(
-                        role = "assistant",
-                        content = response.textContent,
-                        toolCalls = response.toolCalls,
-                    ))
-
-                    // Check for repeated tool call loops
-                    val currentSignature = response.toolCalls.joinToString("|") { "${it.name}:${it.arguments}" }
-                    if (currentSignature == lastToolCallSignature) {
-                        sameToolNameCount++ // reuse counter for exact match tracking
-                        if (sameToolNameCount >= 3) {
-                            logger.warn("[Agent] Detected exact tool call loop (3x), breaking")
-                            onTextChunk("\n\n[Agent detected repeated tool call, stopping]")
-                            onDone()
-                            return
-                        }
-                    } else {
-                        sameToolNameCount = 0
-                    }
-                    lastToolCallSignature = currentSignature
-
-                    // Also track consecutive same-tool-name calls with different args
-                    val primaryToolName = response.toolCalls.firstOrNull()?.name ?: ""
-                    if (primaryToolName == lastToolName) {
-                        // already tracked via sameToolNameCount above
-                    } else {
-                        lastToolName = primaryToolName
-                    }
-
-                    // Execute each tool call
-                    for (tc in response.toolCalls) {
-                        if (isCancelled()) break
-
-                        logger.info("[Agent] Executing tool: ${tc.name}(${tc.arguments.keys.joinToString(", ")})")
-                        onToolCallStart(tc.name, tc.arguments)
-
-                        val result = executeTool(tc.name, tc.arguments, conversationId)
-
-                        logger.info("[Agent] Tool ${tc.name} result: ${result.resultString.take(100)}...")
-                        onToolCallResult(tc.name, result.resultString, result.status)
-
-                        // Add tool result to conversation
-                        val maxToolResultSize = 8000
-                        val toolContent = if (result.resultString.length > maxToolResultSize) {
-                            result.resultString.take(maxToolResultSize) +
-                                "\n\n[Output truncated at $maxToolResultSize chars. " +
-                                "Total: ${result.resultString.length} chars. " +
-                                "Use offset/limit parameters to read specific sections.]"
-                        } else {
-                            result.resultString
-                        }
-                        messages.add(AgentMessage(
-                            role = "tool",
-                            content = toolContent,
-                            toolCallId = tc.id,
-                        ))
-                    }
-                }
-                response.textContent?.isNotEmpty() == true -> {
-                    onDone()
-                    return
-                }
-                else -> {
-                    onDone()
-                    return
-                }
-            }
-        }
-
-        if (turns >= MAX_AGENT_TURNS) {
-            onTextChunk("\n\n[Agent stopped after $MAX_AGENT_TURNS turns]*")
-        }
-        onDone()
-    }
-
     data class ParsedToolCall(val id: String, val name: String, val arguments: Map<String, String>, val rawArguments: String = "")
     data class StreamResponse(val textContent: String?, val toolCalls: List<ParsedToolCall>)
 
     /**
      * Stream a single chat completion, returning text content and any tool calls.
+     * Caller is responsible for the multi-turn loop (see Stream.kt).
      */
-    private fun streamWithToolCalls(
+    fun streamWithToolCalls(
         messages: List<AgentMessage>,
         model: String,
         onTextChunk: (String) -> Unit,
@@ -356,7 +223,11 @@ class OpenAIAgentService(private val project: Project) {
         }
 
         activeConnection = conn
-        OutputStreamWriter(conn.outputStream).use { it.write(requestJson); it.flush() }
+        // Write request body
+        val writer = OutputStreamWriter(conn.outputStream)
+        writer.write(requestJson)
+        writer.flush()
+        writer.close()
 
         val status = conn.responseCode
         if (status != 200) {
@@ -452,39 +323,5 @@ class OpenAIAgentService(private val project: Project) {
         }
 
         return StreamResponse(textParts.toString().ifEmpty { null }, parsedToolCalls)
-    }
-
-    /**
-     * Execute a tool using the existing plugin tool implementations.
-     */
-    private fun executeTool(name: String, arguments: Map<String, String>, conversationId: String): CompletedToolCall {
-        return try {
-            val tool = ToolType.createToolInstance(name, false)
-            if (tool == null) {
-                CompletedToolCall(
-                    toolCallId = "",
-                    toolName = name,
-                    resultString = "Unknown tool: $name",
-                    status = false,
-                )
-            } else {
-                val toolCall = ToolCall(
-                    toolCallId = java.util.UUID.randomUUID().toString(),
-                    toolName = name,
-                    toolParameters = arguments,
-                    rawText = "",
-                    fullyFormed = true,
-                )
-                tool.execute(toolCall, project, conversationId)
-            }
-        } catch (e: Exception) {
-            logger.warn("[Agent] Tool execution error for $name: ${e.message}", e)
-            CompletedToolCall(
-                toolCallId = "",
-                toolName = name,
-                resultString = "Error executing $name: ${e.message}",
-                status = false,
-            )
-        }
     }
 }

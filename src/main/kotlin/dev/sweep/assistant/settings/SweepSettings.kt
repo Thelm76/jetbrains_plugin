@@ -248,7 +248,9 @@ class SweepSettings : PersistentStateComponent<SweepSettings> {
             } else if (SweepSettingsParser.isCloudEnvironment()) {
                 githubToken != DEFAULT_GITHUB_TOKEN
             } else {
-                githubToken != DEFAULT_GITHUB_TOKEN && baseUrl != DEFAULT_SWEEP_URL
+                // Non-Sweep backends (LM Studio, Ollama, etc.) only need a base URL —
+                // an API token is optional for local servers.
+                baseUrl != DEFAULT_SWEEP_URL || (githubToken != DEFAULT_GITHUB_TOKEN)
             }
 
     fun notifySettingsChanged() {

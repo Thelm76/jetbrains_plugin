@@ -519,9 +519,13 @@ class FileModificationToolCallItem(
         // Create a light virtual file with the correct extension for syntax highlighting
         val virtualFile = LightVirtualFile(fileName, "")
 
-        // Create PSI file and document
-        val psiFile = PsiManager.getInstance(project).findFile(virtualFile) ?: return
-        diffDocument = PsiDocumentManager.getInstance(project).getDocument(psiFile) ?: return
+        // Create PSI file and document (requires read action even on EDT)
+        val psiFile = com.intellij.openapi.application.ReadAction.compute<com.intellij.psi.PsiFile?, Throwable> {
+            PsiManager.getInstance(project).findFile(virtualFile)
+        } ?: return
+        diffDocument = com.intellij.openapi.application.ReadAction.compute<com.intellij.openapi.editor.Document?, Throwable> {
+            PsiDocumentManager.getInstance(project).getDocument(psiFile)
+        } ?: return
 
         // Create the editor
         diffEditor =

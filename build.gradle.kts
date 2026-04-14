@@ -15,7 +15,7 @@ plugins {
 
 val remoteRobotVersion = "0.11.20"
 val pluginId = "dev.sweep.assistant"
-val pluginName = "Sweep Autocomplete OSS"
+val pluginName = "Sweep Autocomplete and Agent"
 println("Building plugin: $pluginName with ID: $pluginId")
 group = "dev.sweep"
 version = "1.30.0"

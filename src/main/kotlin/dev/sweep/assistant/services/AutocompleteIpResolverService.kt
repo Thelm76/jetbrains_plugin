@@ -351,6 +351,17 @@ class AutocompleteIpResolverService(
     }
 
     private fun fetchViaNativeEngine(request: NextEditAutocompleteRequest): NextEditAutocompleteResponse? {
+        // Ensure the local llama-server is running before attempting an autocomplete.
+        // The startup activity also tries to start it on project open, but this is a
+        // safety net for cases where startup didn't fire or the server died.
+        val serverManager = LocalAutocompleteServerManager.getInstance()
+        if (!serverManager.isServerHealthy()) {
+            logger.info("Local autocomplete server not healthy on first request — starting in terminal")
+            serverManager.startServerInTerminal(project)
+            // Server takes several seconds to load; skip this autocomplete request rather
+            // than block. Subsequent requests will succeed once the server is up.
+            return null
+        }
         val engine = getOrCreateNativeEngine()
 
         val nesRequest = dev.sweep.assistant.autocomplete.edit.engine.NextEditAutocompleteEngine.NesRequest(

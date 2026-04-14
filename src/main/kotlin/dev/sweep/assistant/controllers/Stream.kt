@@ -280,15 +280,23 @@ class Stream(
 
         // For non-Sweep backends (LM Studio, Ollama, etc.), use OpenAI-compatible API
         if (!dev.sweep.assistant.services.OpenAIChatService.isSweepBackend()) {
+            currentMarkdownDisplay.startStreaming()
+            // Mark streaming active so stop button shows
+            StreamStateService.getInstance(project).notify(true, false, true, currentConversationId)
+            var selectedModel = SweepComponent.getSelectedModelId(project)
+                ?: sessionMessageList.selectedModel
+            // "auto" is a Sweep-specific concept — for OpenAI endpoints, use the first available model
+            if (selectedModel == null || selectedModel == "auto" || selectedModel.isEmpty()) {
+                val available = dev.sweep.assistant.services.OpenAIChatService.getInstance().fetchModels()
+                selectedModel = available.values.firstOrNull() ?: ""
+            }
+
+            // Launch HTTP work in a background coroutine — just like the Sweep backend path
+            // uses streamingJob. This prevents blocking the caller (which may be on EDT via
+            // runBlocking in MessagesComponent.update).
+            val model = selectedModel
+            streamingJob = coroutineScope.launch {
             try {
-                currentMarkdownDisplay.startStreaming()
-                var selectedModel = SweepComponent.getSelectedModelId(project)
-                    ?: sessionMessageList.selectedModel
-                // "auto" is a Sweep-specific concept — for OpenAI endpoints, use the first available model
-                if (selectedModel == null || selectedModel == "auto" || selectedModel.isEmpty()) {
-                    val available = dev.sweep.assistant.services.OpenAIChatService.getInstance().fetchModels()
-                    selectedModel = available.values.firstOrNull() ?: ""
-                }
 
                 logger.info("[OpenAI] Starting chat with model='$selectedModel', ${sessionMessageList.snapshot().size} messages")
 
@@ -356,7 +364,7 @@ class Stream(
                         append("You are an expert coding agent integrated into a JetBrains IDE. ")
                         append("You can read files, search code, edit files, and run shell commands to help the user.\n\n")
                         append("When you need to make changes, use the available tools. ")
-                        append("Read the relevant files first, then make targeted edits using str_replace.\n\n")
+                        append("Read the relevant files first, then make targeted edits.\n\n")
                     } else {
                         append("You are an expert coding assistant integrated into a JetBrains IDE. ")
                     }
@@ -389,18 +397,28 @@ class Stream(
                         append("\nThe user is working with the following files:\n\n")
                         append(contextParts.joinToString("\n\n"))
                     }
-                }
 
-                // Convert messages to OpenAI format, prepending system message
-                val openAIMessages = mutableListOf(
-                    dev.sweep.assistant.services.OpenAIChatService.ChatMessage("system", systemPrompt),
-                )
-                openAIMessages.addAll(sessionMessageList.snapshot().map { msg ->
-                    dev.sweep.assistant.services.OpenAIChatService.ChatMessage(
-                        role = msg.role.name.lowercase(),
-                        content = msg.content,
-                    )
-                })
+                    // Append project-level rules (SWEEP.md / AGENTS.md / CLAUDE.md) plus
+                    // any hierarchical rules scoped to the files currently in context.
+                    val sweepConfig = dev.sweep.assistant.components.SweepConfig.getInstance(project)
+                    val contextForRules = buildList {
+                        effectiveCurrentFilePath?.let { if (it.isNotBlank()) add(it) }
+                        for (value in includedFiles.values) {
+                            val fp = TutorialPage.normalizeTutorialPath(value)
+                            if (fp.isNotBlank() && fp != effectiveCurrentFilePath) add(fp)
+                        }
+                    }.distinct()
+                    val rules = try {
+                        if (contextForRules.isNotEmpty())
+                            sweepConfig.getDynamicRulesContent(contextForRules)
+                                ?: sweepConfig.getCurrentRulesContent()
+                        else sweepConfig.getCurrentRulesContent()
+                    } catch (_: Exception) { null }
+                    if (!rules.isNullOrBlank()) {
+                        append("\n\n")
+                        append(rules)
+                    }
+                }
 
                 // Create empty assistant message with empty annotations for code replacements
                 val assistantMessage = Message(
@@ -410,59 +428,78 @@ class Stream(
                 )
                 onMessageUpdated(assistantMessage)
 
-                logger.info("[OpenAI] System prompt length=${systemPrompt.length}, mode=$currentMode, agent=$isAgentMode, sending ${openAIMessages.size} messages to ${dev.sweep.assistant.settings.SweepSettings.getInstance().baseUrl}")
+                logger.info("[OpenAI] System prompt length=${systemPrompt.length}, mode=$currentMode, agent=$isAgentMode, baseUrl=${dev.sweep.assistant.settings.SweepSettings.getInstance().baseUrl}")
 
                 if (isAgentMode) {
-                    // Agent mode: multi-turn loop with tool calling
-                    // Only send system prompt + the latest user message to avoid
-                    // the model trying to redo earlier chat-mode responses with tools
-                    val agentService = dev.sweep.assistant.services.OpenAIAgentService(project)
+                    // Agent mode: a single completion turn. Tool calls are handed to the
+                    // SweepAgent pipeline (which renders the UI and triggers CONTINUE_AGENT
+                    // → another Stream.start(isFollowupToToolCall=true) for the next turn).
+                    val agentService = dev.sweep.assistant.services.OpenAIAgentService()
                     activeAgentService = agentService
-                    val latestUserMessage = openAIMessages.lastOrNull { it.role == "user" }
-                    val agentMessages = mutableListOf(
-                        dev.sweep.assistant.services.OpenAIAgentService.AgentMessage("system", systemPrompt),
-                    )
-                    if (latestUserMessage != null) {
-                        agentMessages.add(
-                            dev.sweep.assistant.services.OpenAIAgentService.AgentMessage("user", latestUserMessage.content)
-                        )
-                    }
 
-                    agentService.runAgentLoop(
-                        messages = agentMessages,
-                        model = selectedModel ?: "",
-                        onTextChunk = { chunk ->
-                            assistantMessage.content += chunk
-                            onMessageUpdated(assistantMessage)
-                        },
-                        onToolCallStart = { toolName, params ->
-                            assistantMessage.content += "\n\n> **Using tool:** `$toolName`"
-                            if (params.isNotEmpty()) {
-                                val paramsStr = params.entries.joinToString(", ") { "${it.key}=${it.value.take(50)}" }
-                                assistantMessage.content += " ($paramsStr)"
-                            }
-                            assistantMessage.content += "\n"
-                            onMessageUpdated(assistantMessage)
-                        },
-                        onToolCallResult = { toolName, result, success ->
-                            val statusEmoji = if (success) "+" else "!"
-                            val preview = result.take(200).replace("\n", " ")
-                            assistantMessage.content += "> [$statusEmoji] `$toolName` result: $preview\n"
-                            onMessageUpdated(assistantMessage)
-                        },
-                        onDone = {
-                            logger.info("[OpenAI Agent] Loop completed, total length=${assistantMessage.content.length}")
-                        },
-                        onError = { e ->
-                            logger.warn("[OpenAI Agent] Error: ${e.message}", e)
+                    // Build OpenAI conversation by walking the session messages and expanding
+                    // assistant messages that have tool_calls/completed results into the
+                    // tool-calling protocol shape.
+                    val agentMessages = buildOpenAiAgentMessages(systemPrompt, sessionMessageList.snapshot())
+
+                    val response = try {
+                        agentService.streamWithToolCalls(
+                            agentMessages, selectedModel ?: "",
+                            onTextChunk = { chunk ->
+                                assistantMessage.content += chunk
+                                onMessageUpdated(assistantMessage)
+                            },
+                            isCancelled = { cancelledByUser },
+                        )
+                    } catch (e: Exception) {
+                        if (!cancelledByUser) {
                             assistantMessage.content += "\n\n**Error:** ${e.message}"
                             onMessageUpdated(assistantMessage)
-                        },
-                        isCancelled = { cancelledByUser },
-                        conversationId = currentConversationId,
-                    )
+                        }
+                        null
+                    }
+
+                    if (response != null && !cancelledByUser && response.toolCalls.isNotEmpty()) {
+                        // Convert OpenAI tool calls to Sweep ToolCall objects.
+                        // Always assign a fresh UUID: some models re-emit the SAME tool_call_id
+                        // across turns, which collides with SweepAgentSession.jobsById (keyed by
+                        // toolCallId) — the dedup short-circuits execution, awaitToolCalls returns
+                        // with no completion in the new message, and AgentActionBlockDisplay's
+                        // stream-stop listener then persists a spurious "Rejected" entry.
+                        val sweepToolCalls = response.toolCalls.map { tc ->
+                            dev.sweep.assistant.data.ToolCall(
+                                toolCallId = java.util.UUID.randomUUID().toString(),
+                                toolName = tc.name,
+                                toolParameters = tc.arguments,
+                                rawText = tc.rawArguments,
+                                fullyFormed = true,
+                            )
+                        }
+                        assistantMessage.annotations?.toolCalls?.addAll(sweepToolCalls)
+                        onMessageUpdated(assistantMessage)
+
+                        // Hand off to Sweep: ingest queues execution and renders UI; awaitToolCalls
+                        // blocks until all tools complete (or are cancelled) and then fires
+                        // CONTINUE_AGENT, which re-enters Stream.start with isFollowupToToolCall=true.
+                        // We MUST return after this — falling through to the post-processing
+                        // code would re-emit onMessageUpdated with tool calls in annotations,
+                        // causing MessagesComponent to re-ingest them and spawn a duplicate cycle.
+                        val sweepAgent = dev.sweep.assistant.agent.SweepAgent.getInstance(project)
+                        sweepAgent.ingestToolCalls(sweepToolCalls, currentConversationId)
+                        sweepAgent.awaitToolCalls(currentConversationId, assistantMessage)
+                        return@launch // Sweep pipeline owns the continuation from here
+                    }
                 } else {
-                    // Chat mode: simple streaming without tool calling
+                    // Chat mode: simple streaming without tool calling.
+                    val openAIMessages = mutableListOf(
+                        dev.sweep.assistant.services.OpenAIChatService.ChatMessage("system", systemPrompt),
+                    )
+                    openAIMessages.addAll(sessionMessageList.snapshot().map { msg ->
+                        dev.sweep.assistant.services.OpenAIChatService.ChatMessage(
+                            role = msg.role.name.lowercase(),
+                            content = msg.content,
+                        )
+                    })
                     dev.sweep.assistant.services.OpenAIChatService.getInstance().streamChatCompletion(
                         messages = openAIMessages,
                         model = selectedModel ?: "",
@@ -482,8 +519,13 @@ class Stream(
                     )
                 }
 
-                // Post-process: extract code blocks and generate codeReplacements for Apply button
-                enrichMessageWithCodeReplacements(assistantMessage)
+                // Post-process: extract code blocks and generate codeReplacements for Apply button.
+                // Skip in agent mode — tool results (diffs, file contents) are already rendered
+                // by the SweepAgent pipeline; extracting code blocks from the model's text
+                // response would create duplicate widgets.
+                if (!isAgentMode) {
+                    enrichMessageWithCodeReplacements(assistantMessage)
+                }
 
                 // Final update
                 onMessageUpdated(assistantMessage)
@@ -495,6 +537,7 @@ class Stream(
                 currentMarkdownDisplay.stopStreaming()
                 StreamStateService.getInstance(project).notify(false, false, false, currentConversationId)
             }
+            } // end streamingJob launch
             return
         }
 
@@ -1339,6 +1382,74 @@ class Stream(
     }
 
     /**
+     * Convert Sweep session messages to OpenAI's tool-calling protocol shape.
+     * Each Sweep ASSISTANT message with tool calls expands into:
+     *   - one assistant message containing the original tool_calls, then
+     *   - one `tool` message per completed call carrying the result string.
+     *
+     * Empty trailing assistant placeholders (added by SweepAgent's CONTINUE_AGENT)
+     * are skipped; they exist only as a UI slot for the upcoming response.
+     */
+    private fun buildOpenAiAgentMessages(
+        systemPrompt: String,
+        sessionMessages: List<Message>,
+    ): MutableList<dev.sweep.assistant.services.OpenAIAgentService.AgentMessage> {
+        val out = mutableListOf(
+            dev.sweep.assistant.services.OpenAIAgentService.AgentMessage("system", systemPrompt),
+        )
+        val gson = com.google.gson.Gson()
+        for (msg in sessionMessages) {
+            when (msg.role) {
+                MessageRole.USER -> {
+                    if (msg.content.isNotEmpty()) {
+                        out.add(dev.sweep.assistant.services.OpenAIAgentService.AgentMessage("user", msg.content))
+                    }
+                }
+                MessageRole.ASSISTANT -> {
+                    val toolCalls = msg.annotations?.toolCalls.orEmpty()
+                    val completed = msg.annotations?.completedToolCalls.orEmpty()
+                    if (toolCalls.isEmpty() && msg.content.isEmpty()) continue // empty placeholder slot
+                    if (toolCalls.isNotEmpty()) {
+                        val parsed = toolCalls.map { tc ->
+                            // Re-emit raw JSON args verbatim when available so we don't
+                            // string-coerce numbers/booleans/arrays back to quoted strings.
+                            val raw = if (tc.rawText.isNotEmpty()) tc.rawText else gson.toJson(tc.toolParameters)
+                            dev.sweep.assistant.services.OpenAIAgentService.ParsedToolCall(
+                                id = tc.toolCallId,
+                                name = tc.toolName,
+                                arguments = tc.toolParameters,
+                                rawArguments = raw,
+                            )
+                        }
+                        out.add(dev.sweep.assistant.services.OpenAIAgentService.AgentMessage(
+                            role = "assistant",
+                            content = msg.content,
+                            toolCalls = parsed,
+                        ))
+                        for (tc in toolCalls) {
+                            val result = completed.firstOrNull { it.toolCallId == tc.toolCallId }
+                            val body = result?.resultString?.take(8000) ?: "Tool execution pending"
+                            val suffix = if ((result?.resultString?.length ?: 0) > 8000)
+                                "\n\n[Output truncated. Use offset/limit parameters to read specific sections.]" else ""
+                            out.add(dev.sweep.assistant.services.OpenAIAgentService.AgentMessage(
+                                role = "tool",
+                                content = body + suffix,
+                                toolCallId = tc.toolCallId,
+                            ))
+                        }
+                    } else if (msg.content.isNotEmpty()) {
+                        out.add(dev.sweep.assistant.services.OpenAIAgentService.AgentMessage("assistant", msg.content))
+                    }
+                }
+                MessageRole.SYSTEM -> {
+                    // System message is supplied by the caller; ignore any persisted ones.
+                }
+            }
+        }
+        return out
+    }
+
+    /**
      * Post-process an assistant message:
      * 1. Extract <think>...</think> blocks into reasoning annotations
      * 2. Generate CodeReplacement annotations from code blocks for the "Apply" button
@@ -1382,6 +1493,15 @@ class Stream(
     }
 
     fun stop(isUserInitiated: Boolean = true) {
+        // Only set the cancellation flag for user-initiated stops.
+        // Non-user-initiated stops (e.g. Stream.start() cleaning up the previous stream
+        // before a CONTINUE_AGENT follow-up) must NOT set this flag — doing so would
+        // cause AgentActionBlockDisplay's stream-stop listener to mark successfully
+        // completed tool calls as "Rejected".
+        if (isUserInitiated) {
+            cancelledByUser = true
+        }
+
         // Cancel any active agent HTTP connection
         activeAgentService?.cancelActiveRequest()
         activeAgentService = null
@@ -1389,12 +1509,22 @@ class Stream(
         logger.info(
             "[Stream.stop] Stopping stream: conversationId=$sessionConversationId, isUserInitiated=$isUserInitiated, hasJob=${streamingJob != null}",
         )
-        // Only stop tool execution for this specific session, not all sessions
-        sessionConversationId?.let { convId ->
-            SweepAgent.getInstance(project).stopToolExecution(convId)
+        // Only stop tool execution for user-initiated stops
+        if (isUserInitiated) {
+            sessionConversationId?.let { convId ->
+                SweepAgent.getInstance(project).stopToolExecution(convId)
+            }
         }
-        if (streamingJob == null) return
-        cancelledByUser = true
+        if (streamingJob == null) {
+            // OpenAI path has no streamingJob — for user-initiated stops, hide the
+            // stop button. For non-user-initiated (CONTINUE_AGENT follow-up), don't
+            // fire notify — the new stream will set its own state.
+            if (isUserInitiated) {
+                markdownDisplay?.stopStreaming()
+                StreamStateService.getInstance(project).notify(false, false, false, sessionConversationId)
+            }
+            return
+        }
         MessagesComponent.getInstance(project).showScrollbar()
         markdownDisplay?.stopStreaming()
         streamingJob?.cancel()

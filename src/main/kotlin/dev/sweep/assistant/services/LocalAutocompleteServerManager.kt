@@ -81,20 +81,22 @@ class LocalAutocompleteServerManager : Disposable {
         startServer(onStatus)
     }
 
-    fun isServerHealthy(): Boolean =
-        try {
-            val request =
-                HttpRequest
-                    .newBuilder()
-                    .uri(URI.create(getServerUrl()))
-                    .timeout(Duration.ofMillis(HEALTH_CHECK_TIMEOUT_MS))
-                    .GET()
-                    .build()
-            val response = httpClient.send(request, HttpResponse.BodyHandlers.discarding())
-            response.statusCode() in 200..499
+    fun isServerHealthy(): Boolean {
+        // Use HttpURLConnection — java.net.http.HttpClient has known issues with localhost on macOS
+        return try {
+            val url = java.net.URL(getServerUrl())
+            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = HEALTH_CHECK_TIMEOUT_MS.toInt()
+                readTimeout = HEALTH_CHECK_TIMEOUT_MS.toInt()
+            }
+            val status = conn.responseCode
+            conn.disconnect()
+            status in 200..499
         } catch (e: Exception) {
             false
         }
+    }
 
     @Synchronized
     private fun startServer(onStatus: ((String) -> Unit)? = null) {
@@ -532,13 +534,25 @@ class LocalAutocompleteServerManager : Disposable {
      * Starts the local autocomplete server in a visible IDE terminal tab.
      * If the server is already healthy, does nothing.
      */
+    @Volatile
+    private var terminalStartInProgress = false
+
     fun startServerInTerminal(project: Project) {
         if (isServerHealthy()) {
             logger.info("Local autocomplete server is already running")
             return
         }
+        // Prevent multiple concurrent terminal starts (e.g. when multiple projects open at once)
+        if (terminalStartInProgress) {
+            logger.info("Local autocomplete server terminal start already in progress, skipping")
+            return
+        }
+        terminalStartInProgress = true
 
-        val command = getServerCommand() ?: return
+        val command = getServerCommand() ?: run {
+            terminalStartInProgress = false
+            return
+        }
 
         ApplicationManager.getApplication().invokeLater {
             try {
@@ -570,10 +584,14 @@ class LocalAutocompleteServerManager : Disposable {
                     ApplicationManager.getApplication().invokeLater {
                         TerminalApiWrapper.sendCommand(targetWidget, command, project, isPowerShell)
                     }
+                    // Clear the in-progress flag after the server has had time to start
+                    Thread.sleep(30_000)
+                    terminalStartInProgress = false
                 }
                 logger.info("Started local autocomplete server in terminal: $command")
             } catch (e: Exception) {
                 logger.warn("Failed to start local autocomplete server in terminal: ${e.message}")
+                terminalStartInProgress = false
                 showNotification(
                     "Failed to open terminal for local autocomplete server: ${e.message}",
                     NotificationType.ERROR,

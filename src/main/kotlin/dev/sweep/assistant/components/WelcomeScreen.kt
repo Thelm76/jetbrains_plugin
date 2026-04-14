@@ -29,7 +29,7 @@ class WelcomeScreen(
                     icon(SweepIcons.BigSweepIcon.scale(80f)).align(AlignX.CENTER)
                 }
                 row {
-                    text("Sweep Autocomplete OSS")
+                    text("Sweep Autocomplete and Agent")
                         .applyToComponent {
                             font = font.deriveFont(java.awt.Font.BOLD, font.size * 1.2f)
                         }.align(AlignX.CENTER)
