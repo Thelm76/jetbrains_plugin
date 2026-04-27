@@ -87,8 +87,15 @@ class AutocompleteIpResolverService(
      * This centralizes the entire HTTP request flow in the DNS resolver service.
      */
     @RequiresBackgroundThread
-    suspend fun fetchNextEditAutocomplete(request: NextEditAutocompleteRequest): NextEditAutocompleteResponse? =
-        try {
+    suspend fun fetchNextEditAutocomplete(request: NextEditAutocompleteRequest): NextEditAutocompleteResponse? {
+        // Native engine path: prompt construction + llama-server direct
+        if (SweepConfig.getInstance(project).isAutocompleteLocalMode() &&
+            SweepConfig.getInstance(project).isAutocompleteLocalNativeEngine()
+        ) {
+            return fetchViaNativeEngine(request)
+        }
+
+        return try {
             if (SweepConfig.getInstance(project).isAutocompleteLocalMode()) {
                 LocalAutocompleteServerManager.getInstance().ensureServerRunning()
             }
@@ -201,6 +208,7 @@ class AutocompleteIpResolverService(
             }
             throw e
         }
+    }
 
     init {
         startPeriodicResolution()
@@ -324,6 +332,106 @@ class AutocompleteIpResolverService(
             logger.warn("Health check failed: ${e.message}")
             // Keep the last latency value on failure
         }
+    }
+
+    // --- Native engine (Kotlin prompt construction + llama-server direct) ---
+
+    @Volatile
+    private var nativeEngine: dev.sweep.assistant.autocomplete.edit.engine.NextEditAutocompleteEngine? = null
+
+    private fun getOrCreateNativeEngine(): dev.sweep.assistant.autocomplete.edit.engine.NextEditAutocompleteEngine {
+        nativeEngine?.let { return it }
+        val port = SweepSettings.getInstance().autocompleteLocalPort
+        val client = dev.sweep.assistant.autocomplete.edit.engine.LlamaServerClient(
+            baseUrl = "http://localhost:$port",
+        )
+        val engine = dev.sweep.assistant.autocomplete.edit.engine.NextEditAutocompleteEngine(client)
+        nativeEngine = engine
+        return engine
+    }
+
+    private fun fetchViaNativeEngine(request: NextEditAutocompleteRequest): NextEditAutocompleteResponse? {
+        // Ensure the local llama-server is running before attempting an autocomplete.
+        // The startup activity also tries to start it on project open, but this is a
+        // safety net for cases where startup didn't fire or the server died.
+        val serverManager = LocalAutocompleteServerManager.getInstance()
+        if (!serverManager.isServerHealthy()) {
+            logger.info("Local autocomplete server not healthy on first request — starting in terminal")
+            serverManager.startServerInTerminal(project)
+            // Server takes several seconds to load; skip this autocomplete request rather
+            // than block. Subsequent requests will succeed once the server is up.
+            return null
+        }
+        val engine = getOrCreateNativeEngine()
+
+        val nesRequest = dev.sweep.assistant.autocomplete.edit.engine.NextEditAutocompleteEngine.NesRequest(
+            filePath = request.file_path,
+            fileContents = request.file_contents,
+            originalFileContents = request.original_file_contents,
+            recentChanges = request.recent_changes,
+            cursorPosition = request.cursor_position,
+            fileChunks = request.file_chunks.map {
+                dev.sweep.assistant.autocomplete.edit.engine.NesPromptBuilder.FileChunkData(
+                    filePath = it.file_path,
+                    content = it.content,
+                    startLine = it.start_line,
+                    endLine = it.end_line,
+                )
+            },
+            retrievalChunks = request.retrieval_chunks.map {
+                dev.sweep.assistant.autocomplete.edit.engine.NesPromptBuilder.FileChunkData(
+                    filePath = it.file_path,
+                    content = it.content,
+                    startLine = it.start_line,
+                    endLine = it.end_line,
+                )
+            },
+            recentUserActions = request.recent_user_actions.map {
+                dev.sweep.assistant.autocomplete.edit.engine.NextEditAutocompleteEngine.UserAction(
+                    actionType = it.action_type.name,
+                    lineNumber = it.line_number,
+                    offset = it.offset,
+                    filePath = it.file_path,
+                    timestamp = it.timestamp,
+                )
+            },
+            recentChangesHighRes = request.recent_changes_high_res,
+            changesAboveCursor = request.changes_above_cursor,
+            editorDiagnostics = request.editor_diagnostics.map {
+                dev.sweep.assistant.autocomplete.edit.engine.NesRetrieval.EditorDiagnosticData(
+                    line = it.line,
+                    lineNumber = it.line - 1,
+                    startOffset = it.start_offset,
+                    endOffset = it.end_offset,
+                    severity = it.severity,
+                    message = it.message,
+                )
+            },
+        )
+
+        val result = engine.fetchNextEdits(nesRequest)
+
+        if (result.completions.isEmpty()) return null
+
+        val first = result.completions.first()
+        return NextEditAutocompleteResponse(
+            start_index = first.startIndex,
+            end_index = first.endIndex,
+            completion = first.completion,
+            confidence = first.confidence,
+            autocomplete_id = result.autocompleteId,
+            elapsed_time_ms = result.elapsedMs,
+            completions = result.completions.map {
+                dev.sweep.assistant.autocomplete.edit.NextEditAutocompletion(
+                    start_index = it.startIndex,
+                    end_index = it.endIndex,
+                    completion = it.completion,
+                    confidence = it.confidence,
+                    autocomplete_id = it.autocompleteId,
+                )
+            },
+            nativeIndices = true,  // indices are already JVM-native, skip Python→JVM conversion
+        )
     }
 
     override fun dispose() {

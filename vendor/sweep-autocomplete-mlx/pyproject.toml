@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sweep-autocomplete-mlx"
+version = "0.1.0"
+description = "Local next-edit autocomplete server powered by MLX (Apple Silicon)"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "python-multipart>=0.0.6",
+    "loguru>=0.7.0",
+    "requests>=2.31.0",
+    "numpy>=1.24.0",
+    "scipy>=1.11.0",
+    "regex>=2023.0",
+    "brotli>=1.1.0",
+    "pydantic>=2.0.0",
+    "mlx-lm>=0.20.0",
+    "huggingface-hub>=0.20.0",
+]
+
+[project.scripts]
+sweep-autocomplete-mlx = "sweep_autocomplete.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sweep_autocomplete*"]

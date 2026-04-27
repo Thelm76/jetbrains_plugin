@@ -15,10 +15,10 @@ plugins {
 
 val remoteRobotVersion = "0.11.20"
 val pluginId = "dev.sweep.assistant"
-val pluginName = "Self-Hosted Enterprise Updater"
+val pluginName = "Sweep Autocomplete and Agent"
 println("Building plugin: $pluginName with ID: $pluginId")
 group = "dev.sweep"
-version = "1.29.3"
+version = "1.30.0"
 
 repositories {
     mavenCentral()
@@ -67,7 +67,7 @@ intellijPlatform {
                 )
                 channels.set(listOf(ProductRelease.Channel.RELEASE))
                 sinceBuild.set("241")
-                untilBuild.set("253.*")
+                untilBuild.set("261.*")
             }
         }
     }
@@ -86,7 +86,7 @@ tasks {
 
     patchPluginXml {
         sinceBuild.set("241")
-        untilBuild.set("253.*")
+        untilBuild.set("261.*")
     }
 
     signPlugin {
@@ -130,9 +130,24 @@ tasks {
         }
     }
 
+    val copyBundledPackagesToSandbox by creating(Copy::class) {
+        val sandboxPluginDir =
+            layout.buildDirectory
+                .dir("idea-sandbox/plugins/${project.name}")
+
+        from("vendor/sweep-autocomplete-mlx") {
+            into("sweep-autocomplete-mlx")
+        }
+        into(sandboxPluginDir)
+
+        doLast {
+            println("Copied bundled Python packages to sandbox")
+        }
+    }
+
     // Hook the copy task to prepareSandbox
     prepareSandbox {
-        finalizedBy(copyRipgrepToSandbox)
+        finalizedBy(copyRipgrepToSandbox, copyBundledPackagesToSandbox)
     }
 
     buildPlugin {
@@ -142,6 +157,11 @@ tasks {
         from("src/main/resources") {
             include("tools/ripgrep/**")
             into("lib/tools")
+        }
+
+        // Include bundled MLX autocomplete Python package
+        from("vendor/sweep-autocomplete-mlx") {
+            into("sweep-autocomplete-mlx")
         }
     }
 

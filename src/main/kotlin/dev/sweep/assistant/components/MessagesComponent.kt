@@ -4,7 +4,6 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
@@ -642,20 +641,18 @@ class MessagesComponent(
             val sessionMessageList = messageListService.getMessageListForConversation(conversationId)
             val latestMessages = sessionMessageList?.snapshot() ?: messageListService.snapshot()
             val latestMessage = latestMessages.getOrNull(messageIndex) ?: message
-            // Some nested UI builders access PSI/documents and may require WriteIntentReadAction
-            // Use write-intent read action to satisfy both PSI reads and nested editor creation
+            // Some nested UI builders access PSI/documents — create component directly
+            // since we're already on the EDT via invokeLater
             val real: JComponent =
-                WriteIntentReadAction.compute<JComponent, RuntimeException> {
-                    createComponent(
-                        message = latestMessage,
-                        index = messageIndex,
-                        currentMessages = latestMessages,
-                        loadedFromHistory = loadedFromHistory,
-                        currentWidth = width,
-                        updateType = updateType,
-                        conversationId = conversationId,
-                    )
-                }
+                createComponent(
+                    message = latestMessage,
+                    index = messageIndex,
+                    currentMessages = latestMessages,
+                    loadedFromHistory = loadedFromHistory,
+                    currentWidth = width,
+                    updateType = updateType,
+                    conversationId = conversationId,
+                )
             removeAll()
             add(real, BorderLayout.CENTER)
             if (real is Disposable) {

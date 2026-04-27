@@ -222,10 +222,16 @@ class SweepStartupActivity :
         OSNotificationService.getInstance(project)
 
         // Auto-start local autocomplete server if enabled and not already running
-        if (SweepSettings.getInstance().autocompleteLocalMode) {
+        val startupLogger = com.intellij.openapi.diagnostic.Logger.getInstance(SweepStartupActivity::class.java)
+        val autocompleteLocal = SweepSettings.getInstance().autocompleteLocalMode
+        startupLogger.info("[SweepStartup] autocompleteLocalMode=$autocompleteLocal — checking server status")
+        if (autocompleteLocal) {
             ApplicationManager.getApplication().executeOnPooledThread {
                 val manager = LocalAutocompleteServerManager.getInstance()
-                if (!manager.isServerHealthy()) {
+                val healthy = manager.isServerHealthy()
+                startupLogger.info("[SweepStartup] Local server healthy=$healthy")
+                if (!healthy) {
+                    startupLogger.info("[SweepStartup] Starting local autocomplete server in terminal")
                     manager.startServerInTerminal(project)
                 }
             }

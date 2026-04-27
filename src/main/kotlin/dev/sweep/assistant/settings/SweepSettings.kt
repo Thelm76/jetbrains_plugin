@@ -176,7 +176,13 @@ class SweepSettings : PersistentStateComponent<SweepSettings> {
             // Don't notify settings changed for BYOK to avoid excessive chatter
         }
 
-    var autocompleteLocalMode: Boolean = false
+    var autocompleteLocalMode: Boolean = true
+
+    var autocompleteLocalMlx: Boolean = false
+
+    var autocompleteLocalNativeEngine: Boolean = true
+
+    var autocompleteLocalModel: String = "sweep-0.5B"
 
     var autocompleteLocalPort: Int = 8081
 
@@ -236,10 +242,15 @@ class SweepSettings : PersistentStateComponent<SweepSettings> {
      */
     val hasBeenSet: Boolean
         get() =
-            if (SweepSettingsParser.isCloudEnvironment()) {
+            // Local autocomplete mode with native engine doesn't need any API tokens
+            if (autocompleteLocalMode && autocompleteLocalNativeEngine) {
+                true
+            } else if (SweepSettingsParser.isCloudEnvironment()) {
                 githubToken != DEFAULT_GITHUB_TOKEN
             } else {
-                githubToken != DEFAULT_GITHUB_TOKEN && baseUrl != DEFAULT_SWEEP_URL
+                // Non-Sweep backends (LM Studio, Ollama, etc.) only need a base URL —
+                // an API token is optional for local servers.
+                baseUrl != DEFAULT_SWEEP_URL || (githubToken != DEFAULT_GITHUB_TOKEN)
             }
 
     fun notifySettingsChanged() {

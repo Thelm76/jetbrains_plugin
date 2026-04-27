@@ -165,13 +165,23 @@ fun parseMarkdownBlocks(
         if (path.isEmpty() && code.isNotEmpty() && language != "bash") {
             val lines = code.split("\n")
             val firstLine = lines.first().trim()
-            val filePathPattern =
-                """^(?:[a-zA-Z]:)?(?:[\/\\])?(?:[^\s\/\\:*?"<>|]+[\/\\])*[^\s\/\\:*?"<>|]+\.[a-zA-Z0-9]{1,10}$"""
-                    .toRegex()
 
-            if (filePathPattern.matches(firstLine)) {
-                pathFromCode = firstLine
+            // Check for "// filepath: path" or "# filepath: path" comment pattern
+            val filepathCommentPattern = """^(?://|#)\s*filepath:\s*(.+)$""".toRegex(RegexOption.IGNORE_CASE)
+            val filepathMatch = filepathCommentPattern.matchEntire(firstLine)
+
+            if (filepathMatch != null) {
+                pathFromCode = filepathMatch.groupValues[1].trim()
                 code = lines.drop(1).joinToString("\n")
+            } else {
+                val filePathPattern =
+                    """^(?:[a-zA-Z]:)?(?:[\/\\])?(?:[^\s\/\\:*?"<>|]+[\/\\])*[^\s\/\\:*?"<>|]+\.[a-zA-Z0-9]{1,10}$"""
+                        .toRegex()
+
+                if (filePathPattern.matches(firstLine)) {
+                    pathFromCode = firstLine
+                    code = lines.drop(1).joinToString("\n")
+                }
             }
         }
 

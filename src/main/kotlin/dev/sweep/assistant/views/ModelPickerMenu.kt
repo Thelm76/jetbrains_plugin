@@ -27,20 +27,27 @@ import javax.swing.JPanel
 class ModelPickerMenu(
     private val project: Project,
     parentDisposable: Disposable,
-    private var models: Map<String, String> = DEFAULT_MODELS,
-    private var initialModel: String = DEFAULT_MODEL,
+    private var models: Map<String, String> = getInitialModels(),
+    private var initialModel: String = getInitialDefaultModel(),
 ) : JPanel(),
     Disposable {
     companion object {
-        // Fallback models in case backend is down
-        private val DEFAULT_MODELS =
+        private val SWEEP_DEFAULT_MODELS =
             mapOf(
-                // Pass through the special "auto" key when Auto is selected
                 "Auto" to "auto",
                 "Sonnet 4 (thinking)" to "claude-sonnet-4-20250514:thinking",
                 "Sonnet 4" to "claude-sonnet-4-20250514",
             )
-        private const val DEFAULT_MODEL = "Auto"
+        private val LOCAL_DEFAULT_MODELS =
+            mapOf("(loading models...)" to "")
+
+        fun getInitialModels(): Map<String, String> =
+            if (dev.sweep.assistant.services.OpenAIChatService.isSweepBackend()) SWEEP_DEFAULT_MODELS
+            else LOCAL_DEFAULT_MODELS
+
+        fun getInitialDefaultModel(): String =
+            if (dev.sweep.assistant.services.OpenAIChatService.isSweepBackend()) "Auto"
+            else "(loading models...)"
 
         // Cache for model display names to IDs mapping
         private var modelIdCache: Map<String, String> = mapOf()
@@ -68,8 +75,14 @@ class ModelPickerMenu(
         comboBox.setItemTooltips(SweepConstants.MODEL_HINTS)
         comboBox.isTransparent = true
 
-        // Try to load cached models first
-        loadCachedModels()
+        // Only load cached Sweep models for Sweep backends; clear stale cache otherwise
+        if (dev.sweep.assistant.services.OpenAIChatService.isSweepBackend()) {
+            loadCachedModels()
+        } else {
+            // Clear any cached Sweep models from a previous config
+            SweepMetaData.getInstance().cachedModels = null
+            SweepMetaData.getInstance().cachedDefaultModel = null
+        }
 
         // Check if there's a saved model preference
         val savedModel = SweepComponent.getSelectedModel(project)
@@ -135,25 +148,28 @@ class ModelPickerMenu(
     }
 
     private fun updateComboBoxModel() {
-        val favorites = SweepMetaData.getInstance().favoriteModels
-        val validFavorites = favorites.filter { models.keys.contains(it) }
+        val isSweep = dev.sweep.assistant.services.OpenAIChatService.isSweepBackend()
 
-        // Determine which models to show - fall back to all models if favorites are empty
-        var modelNames =
-            validFavorites.ifEmpty {
-                models.keys.toList()
-            }
+        val modelNames = if (isSweep) {
+            val favorites = SweepMetaData.getInstance().favoriteModels
+            val validFavorites = favorites.filter { models.keys.contains(it) }
+            validFavorites.ifEmpty { models.keys.toList() }
+        } else {
+            // For non-Sweep backends, just show all models from /v1/models
+            models.keys.toList()
+        }
 
-        // Add options at the end
-        val options = modelNames + configureFavoritesOption
+        // Only show "+ More models" for Sweep backends
+        val options = if (isSweep) modelNames + configureFavoritesOption else modelNames
 
         comboBox.setOptions(options)
-        // Ensure we never show "+ More models" as selected - it's only an action option
         comboBox.selectedItem =
             if (currentModel == configureFavoritesOption) {
                 modelNames.firstOrNull() ?: currentModel
-            } else {
+            } else if (modelNames.contains(currentModel)) {
                 currentModel
+            } else {
+                modelNames.firstOrNull() ?: currentModel
             }
     }
 
@@ -222,6 +238,12 @@ class ModelPickerMenu(
     }
 
     private fun fetchAllowedModels() {
+        // For non-Sweep backends (LM Studio, Ollama, etc.), fetch from /v1/models
+        if (!dev.sweep.assistant.services.OpenAIChatService.isSweepBackend()) {
+            fetchOpenAIModels()
+            return
+        }
+
         coroutineScope.launch {
             try {
                 var connection: HttpURLConnection? = null
@@ -327,6 +349,46 @@ class ModelPickerMenu(
                 }
             } catch (e: Exception) {
                 logger.warn("Error in fetchAllowedModels", e)
+            }
+        }
+    }
+
+    /**
+     * Fetch models from an OpenAI-compatible /v1/models endpoint.
+     */
+    private fun fetchOpenAIModels() {
+        val baseUrl = SweepSettings.getInstance().baseUrl
+        logger.info("Fetching models from OpenAI-compatible endpoint: $baseUrl/v1/models")
+
+        coroutineScope.launch {
+            try {
+                val fetchedModels = dev.sweep.assistant.services.OpenAIChatService.getInstance().fetchModels()
+                logger.info("OpenAI model fetch returned ${fetchedModels.size} models: ${fetchedModels.keys.take(5)}")
+                if (fetchedModels.isNotEmpty()) {
+                    ApplicationManager.getApplication().invokeLater {
+                        modelIdCache = fetchedModels
+                        lastFetchTime = System.currentTimeMillis()
+                        models = fetchedModels
+                        defaultModelFromBackend = fetchedModels.keys.first()
+
+                        // Check for saved model preference
+                        val savedModel = SweepComponent.getSelectedModel(project)
+                        if (savedModel.isNotEmpty() && models.keys.contains(savedModel)) {
+                            initialModel = savedModel
+                            currentModel = savedModel
+                        } else {
+                            initialModel = defaultModelFromBackend
+                            currentModel = initialModel
+                        }
+
+                        updateComboBoxModel()
+                        logger.info("Updated model picker with ${fetchedModels.size} models from OpenAI endpoint")
+                    }
+                } else {
+                    logger.warn("No models returned from $baseUrl/v1/models")
+                }
+            } catch (e: Exception) {
+                logger.warn("Error fetching OpenAI models from $baseUrl: ${e.message}", e)
             }
         }
     }

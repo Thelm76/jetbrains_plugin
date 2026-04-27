@@ -13,7 +13,6 @@ import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension
 import java.awt.Font
-import java.awt.event.WindowEvent
 import javax.swing.*
 
 class SweepSettingsConfigurable(
@@ -53,9 +52,12 @@ class SweepSettingsConfigurable(
                     )
             }
         openConfigButton.addActionListener {
-            SwingUtilities.getWindowAncestor(openConfigButton)?.dispatchEvent(
-                WindowEvent(SwingUtilities.getWindowAncestor(openConfigButton), WindowEvent.WINDOW_CLOSING),
-            )
+            // Close the settings dialog by finding and disposing the parent JDialog
+            val window = SwingUtilities.getWindowAncestor(openConfigButton)
+            if (window is java.awt.Dialog) {
+                window.isVisible = false
+                window.dispose()
+            }
             // open tool window and show config popup
             ToolWindowManager.getInstance(project).getToolWindow(SweepConstants.TOOLWINDOW_NAME)?.show()
             SweepConfig.getInstance(project).showConfigPopup()

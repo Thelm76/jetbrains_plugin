@@ -1041,6 +1041,24 @@ class SweepConfig(
         SweepSettings.getInstance().autocompleteLocalMode = enabled
     }
 
+    fun isAutocompleteLocalMlx(): Boolean = SweepSettings.getInstance().autocompleteLocalMlx
+
+    fun updateAutocompleteLocalMlx(enabled: Boolean) {
+        SweepSettings.getInstance().autocompleteLocalMlx = enabled
+    }
+
+    fun isAutocompleteLocalNativeEngine(): Boolean = SweepSettings.getInstance().autocompleteLocalNativeEngine
+
+    fun updateAutocompleteLocalNativeEngine(enabled: Boolean) {
+        SweepSettings.getInstance().autocompleteLocalNativeEngine = enabled
+    }
+
+    fun getAutocompleteLocalModel(): String = SweepSettings.getInstance().autocompleteLocalModel
+
+    fun updateAutocompleteLocalModel(modelId: String) {
+        SweepSettings.getInstance().autocompleteLocalModel = modelId
+    }
+
     fun getAutocompleteLocalPort(): Int = SweepSettings.getInstance().autocompleteLocalPort
 
     fun updateAutocompleteLocalPort(port: Int) {
@@ -4677,7 +4695,7 @@ class SweepConfig(
                                     layout = BoxLayout(this, BoxLayout.Y_AXIS)
                                     border = JBUI.Borders.empty(8, 16)
                                     add(
-                                        JLabel("<html><b>Sweep API URL</b></html>").apply {
+                                        JLabel("<html><b>OpenAI Compatible API URL</b></html>").apply {
                                             border = JBUI.Borders.empty(0, 4, 4, 0)
                                         },
                                     )
@@ -4687,7 +4705,7 @@ class SweepConfig(
                                         },
                                     )
                                     add(
-                                        createCommentLabel("The Sweep API endpoint (e.g., http://localhost:8080)").apply {
+                                        createCommentLabel("OpenAI-compatible API endpoint (e.g., http://localhost:1234 for LM Studio)").apply {
                                             border = JBUI.Borders.empty(4, 4, 0, 0)
                                             withSweepFont(project, scale = 0.9f)
                                         },
@@ -4834,6 +4852,85 @@ class SweepConfig(
                                         foreground = JBColor.GRAY
                                         font = font.deriveFont(Font.ITALIC)
                                         border = JBUI.Borders.emptyLeft(24)
+                                    },
+                                )
+                                if (System.getProperty("os.name").lowercase().contains("mac")) {
+                                    add(Box.createRigidArea(Dimension(0, 4.scaled)))
+                                    add(
+                                        JCheckBox("Use MLX runtime for NES model").apply {
+                                            isSelected = isAutocompleteLocalMlx()
+                                            withSweepFont(project)
+                                            border = JBUI.Borders.emptyLeft(24)
+                                            addActionListener {
+                                                updateAutocompleteLocalMlx(isSelected)
+                                            }
+                                        },
+                                    )
+                                    add(Box.createRigidArea(Dimension(0, 2.scaled)))
+                                    add(
+                                        JLabel("Uses MLX for faster inference on Apple Silicon (requires macOS + mlx-lm).").apply {
+                                            withSweepFont(project, scale = 0.85f)
+                                            foreground = JBColor.GRAY
+                                            font = font.deriveFont(Font.ITALIC)
+                                            border = JBUI.Borders.emptyLeft(48)
+                                        },
+                                    )
+                                }
+                                add(Box.createRigidArea(Dimension(0, 4.scaled)))
+                                add(
+                                    JCheckBox("Use native engine (llama-server direct)").apply {
+                                        isSelected = isAutocompleteLocalNativeEngine()
+                                        withSweepFont(project)
+                                        border = JBUI.Borders.emptyLeft(24)
+                                        addActionListener {
+                                            updateAutocompleteLocalNativeEngine(isSelected)
+                                        }
+                                    },
+                                )
+                                add(Box.createRigidArea(Dimension(0, 2.scaled)))
+                                add(
+                                    JLabel("Runs prompt construction in the plugin and calls llama-server directly. Requires llama-server on PATH.").apply {
+                                        withSweepFont(project, scale = 0.85f)
+                                        foreground = JBColor.GRAY
+                                        font = font.deriveFont(Font.ITALIC)
+                                        border = JBUI.Borders.emptyLeft(48)
+                                    },
+                                )
+                                add(Box.createRigidArea(Dimension(0, 4.scaled)))
+                                add(
+                                    JPanel().apply {
+                                        layout = BoxLayout(this, BoxLayout.X_AXIS)
+                                        border = JBUI.Borders.emptyLeft(24)
+                                        add(JLabel("Model").apply { withSweepFont(project) })
+                                        add(Box.createRigidArea(Dimension(8.scaled, 0)))
+                                        val models = dev.sweep.assistant.autocomplete.edit.engine.NesModelConfig.MODELS
+                                        val currentModelId = getAutocompleteLocalModel()
+                                        val comboBox = javax.swing.JComboBox(models.map { it.displayName }.toTypedArray()).apply {
+                                            withSweepFont(project)
+                                            maximumSize = Dimension(300.scaled, 30.scaled)
+                                            selectedIndex = models.indexOfFirst { it.id == currentModelId }.coerceAtLeast(0)
+                                            addActionListener {
+                                                val idx = (this as javax.swing.JComboBox<*>).selectedIndex
+                                                if (idx >= 0 && models[idx].id != getAutocompleteLocalModel()) {
+                                                    updateAutocompleteLocalModel(models[idx].id)
+                                                    // Auto-restart if server is running
+                                                    if (isAutocompleteLocalMode() && LocalAutocompleteServerManager.getInstance().isServerHealthy()) {
+                                                        LocalAutocompleteServerManager.getInstance().restartServerInTerminal(project)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        add(comboBox)
+                                        add(Box.createHorizontalGlue())
+                                    },
+                                )
+                                add(Box.createRigidArea(Dimension(0, 2.scaled)))
+                                add(
+                                    JLabel("Select the GGUF model for local autocomplete. Larger models are slower but may produce better suggestions.").apply {
+                                        withSweepFont(project, scale = 0.85f)
+                                        foreground = JBColor.GRAY
+                                        font = font.deriveFont(Font.ITALIC)
+                                        border = JBUI.Borders.emptyLeft(48)
                                     },
                                 )
                             },

@@ -1414,13 +1414,24 @@ class ChatHistoryComponent(
 
         Disposer.register(popup, popupDisposable)
 
+        // Find a visible anchor component — prefer SweepComponent, fall back to the
+        // parent container or the project's frame so the popup actually appears.
         val sweepComponent = SweepComponent.getInstance(project)
-        if (!sweepComponent.component.isShowing) {
-            Disposer.dispose(popupDisposable)
-            return
+        val anchor = when {
+            sweepComponent.component.isShowing -> sweepComponent.component
+            parentContainer.isShowing -> parentContainer
+            else -> {
+                // Last resort: show relative to the IDE frame
+                val frame = com.intellij.openapi.wm.WindowManager.getInstance().getFrame(project)
+                if (frame != null && frame.isShowing) {
+                    popup.showInCenterOf(frame)
+                    return
+                }
+                Disposer.dispose(popupDisposable)
+                return
+            }
         }
-
-        popup.showInCenterOf(sweepComponent.component)
+        popup.showInCenterOf(anchor)
     }
 
     private fun performImport(

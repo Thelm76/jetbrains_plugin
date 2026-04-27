@@ -49,4 +49,6 @@ video/*.avi
 .idea/gradle.xml
 .kotlin/*
 vendor/**
+!vendor/sweep-autocomplete-mlx/
+!vendor/sweep-autocomplete-mlx/**
 *.gguf

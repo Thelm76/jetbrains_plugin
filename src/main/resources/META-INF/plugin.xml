@@ -14,7 +14,7 @@
          Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
     <description><![CDATA[
-    <strong>This plugin is only for Enterprise customers</strong> with private installations (i.e. you've been linked to this). Other users should use the standard extension in the <a href="https://plugins.jetbrains.com/plugin/26860-sweep-ai">JetBrains Marketplace</a>.
+    <strong>Sweep AI</strong> - fast next-edit suggestions powered by local model.
     ]]></description>
     <change-notes><![CDATA[
 <ul>
