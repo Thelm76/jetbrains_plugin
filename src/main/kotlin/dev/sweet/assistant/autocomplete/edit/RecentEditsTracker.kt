@@ -350,6 +350,7 @@ class RecentEditsTracker(
     private val scope = CoroutineScope(Dispatchers.Default + trackerJob)
     private val ioJob = SupervisorJob()
     private val ioScope = CoroutineScope(Dispatchers.IO + ioJob)
+    private val requestStatusService = AutocompleteRequestStatusService.getInstance(project)
     private var currentListener: DocumentListener? = null
     private var currentDocument: Document? = null
     private var currentCaretListener: CaretListener? = null
@@ -1902,6 +1903,7 @@ class RecentEditsTracker(
         requestEntry: AutocompleteRequestEntry,
         deferred: CompletableDeferred<Pair<AutocompleteRequestEntry, NextEditAutocompleteResponse?>>,
     ) = ioScope.launch {
+        requestStatusService.requestStarted()
         try {
             mutex.withLock {
                 // Cancel all previous requests
@@ -1929,6 +1931,7 @@ class RecentEditsTracker(
             mutex.withLock {
                 fetchJobs.remove(requestEntry.requestTime)
             }
+            requestStatusService.requestFinished()
         }
     }
 

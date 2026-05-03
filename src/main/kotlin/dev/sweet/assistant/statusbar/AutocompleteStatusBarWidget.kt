@@ -9,8 +9,10 @@ import com.intellij.openapi.ui.popup.util.BaseListPopupStep
 import com.intellij.openapi.util.IconLoader
 import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.WindowManager
+import com.intellij.ui.AnimatedIcon
 import com.intellij.util.Consumer
 import com.intellij.vcsUtil.showAbove
+import dev.sweet.assistant.services.AutocompleteRequestStatusService
 import dev.sweet.assistant.services.AutocompleteSnoozeService
 import dev.sweet.assistant.settings.SweetSettings
 import kotlinx.coroutines.CoroutineScope
@@ -38,10 +40,13 @@ class AutocompleteStatusBarWidget(
     private var isAlive = true
     private var clickHandler: Consumer<MouseEvent>? = null
     private val snoozeService = AutocompleteSnoozeService.getInstance(project)
+    private val requestStatusService = AutocompleteRequestStatusService.getInstance(project)
     private val snoozeStateListener = { updateWidget() }
+    private val requestStateListener = { updateWidget() }
 
     init {
         snoozeService.addSnoozeStateListener(snoozeStateListener)
+        requestStatusService.addRequestStateListener(requestStateListener)
         startHealthCheck()
     }
 
@@ -53,15 +58,22 @@ class AutocompleteStatusBarWidget(
 
     override fun dispose() {
         snoozeService.removeSnoozeStateListener(snoozeStateListener)
+        requestStatusService.removeRequestStateListener(requestStateListener)
         scope.cancel()
     }
 
-    override fun getIcon(): Icon? = IconLoader.getIcon("/icons/sweet16x16.svg", javaClass)
+    override fun getIcon(): Icon? =
+        if (requestStatusService.isRequestInProgress) {
+            AnimatedIcon.Default.INSTANCE
+        } else {
+            IconLoader.getIcon("/icons/sweet16x16.svg", javaClass)
+        }
 
     override fun getClickConsumer(): Consumer<MouseEvent>? = clickHandler
 
     override fun getTooltipText(): String =
         when {
+            requestStatusService.isRequestInProgress -> "Sweet Autocomplete: Fetching suggestion..."
             snoozeService.isAutocompleteSnooze() -> "Sweet Autocomplete: Snoozed (${snoozeService.formatRemainingTime()} remaining)"
             isAlive -> "Sweet Autocomplete: OpenAI-compatible API configured"
             else -> "Sweet Autocomplete: OpenAI-compatible API settings incomplete"
