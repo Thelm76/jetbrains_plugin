@@ -12,7 +12,7 @@ import com.intellij.openapi.wm.WindowManager
 import com.intellij.util.Consumer
 import com.intellij.vcsUtil.showAbove
 import dev.sweep.assistant.services.AutocompleteSnoozeService
-import dev.sweep.assistant.services.LocalAutocompleteServerManager
+import dev.sweep.assistant.settings.SweepSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -63,8 +63,8 @@ class AutocompleteStatusBarWidget(
     override fun getTooltipText(): String =
         when {
             snoozeService.isAutocompleteSnooze() -> "Sweep Autocomplete: Snoozed (${snoozeService.formatRemainingTime()} remaining)"
-            isAlive -> "Sweep Autocomplete: Local server online"
-            else -> "Sweep Autocomplete: Local server offline"
+            isAlive -> "Sweep Autocomplete: OpenAI-compatible API configured"
+            else -> "Sweep Autocomplete: OpenAI-compatible API settings incomplete"
         }
 
     private fun startHealthCheck() {
@@ -103,7 +103,7 @@ class AutocompleteStatusBarWidget(
             }
         }
 
-        menuItems.add("Retry local server")
+        menuItems.add("Recheck API settings")
         actions.add {
             scope.launch {
                 isAlive = performHealthCheck()
@@ -111,7 +111,7 @@ class AutocompleteStatusBarWidget(
             }
         }
 
-        val status = if (isAlive) "Local server online" else "Local server offline"
+        val status = if (isAlive) "API configured" else "API settings incomplete"
         val popupStep =
             object : BaseListPopupStep<String>("Sweep Autocomplete ($status)", menuItems) {
                 override fun onChosen(
@@ -137,6 +137,6 @@ class AutocompleteStatusBarWidget(
 
     private suspend fun performHealthCheck(): Boolean =
         withContext(Dispatchers.IO) {
-            LocalAutocompleteServerManager.getInstance().isServerHealthy()
+            SweepSettings.getInstance().isOpenAiConfigured
         }
 }

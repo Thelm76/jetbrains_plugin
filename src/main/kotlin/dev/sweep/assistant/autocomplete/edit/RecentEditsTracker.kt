@@ -1720,7 +1720,7 @@ class RecentEditsTracker(
         offset: Int,
         filePath: String,
     ) {
-        AutocompleteIpResolverService.getInstance(project).updateLastUserActionTimestamp()
+        OpenAiAutocompleteService.getInstance(project).updateLastUserActionTimestamp()
 
         recentUserActions.add(
             UserAction(
@@ -2328,13 +2328,13 @@ class RecentEditsTracker(
 
             val startTime = System.currentTimeMillis()
 
-            val result = AutocompleteIpResolverService.getInstance(project).fetchNextEditAutocomplete(request)
+            val result = OpenAiAutocompleteService.getInstance(project).fetchNextEditAutocomplete(request)
 
             val wallTime = System.currentTimeMillis() - startTime
-            val serverTime = result?.elapsed_time_ms ?: Long.MAX_VALUE
-            val overhead = wallTime - serverTime
+            val upstreamTime = result?.elapsed_time_ms ?: Long.MAX_VALUE
+            val overhead = wallTime - upstreamTime
 
-            logger.info("Fetched next edit autocomplete in ${wallTime}ms (server: ${serverTime}ms, overhead: ${overhead}ms)")
+            logger.info("Fetched next edit autocomplete in ${wallTime}ms (upstream: ${upstreamTime}ms, overhead: ${overhead}ms)")
 
             return result
         } catch (e: Exception) {

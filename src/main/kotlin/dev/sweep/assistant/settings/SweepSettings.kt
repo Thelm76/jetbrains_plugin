@@ -20,7 +20,12 @@ class SweepSettings : PersistentStateComponent<SweepSettings> {
         private const val DEFAULT_ACCEPT_WORD_ON_RIGHT_ARROW = true
         private const val DEFAULT_AUTOCOMPLETE_DEBOUNCE_MS = 10L
         private const val DEFAULT_DISABLE_CONFLICTING_PLUGINS = true
-        private const val DEFAULT_AUTOCOMPLETE_LOCAL_PORT = 8081
+        private const val DEFAULT_OPENAI_BASE_URL = "https://openrouter.ai/api/v1"
+        private const val DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+        private const val DEFAULT_OPENAI_TITLE = "Sweep Autocomplete Adapter"
+        private const val DEFAULT_OPENAI_MAX_TOKENS = 512
+        private const val DEFAULT_OPENAI_TEMPERATURE = 0.0
+        private const val DEFAULT_OPENAI_REQUEST_TIMEOUT_MS = 30_000
 
         fun getInstance(): SweepSettings = ApplicationManager.getApplication().getService(SweepSettings::class.java)
     }
@@ -98,14 +103,56 @@ class SweepSettings : PersistentStateComponent<SweepSettings> {
 
     var hideAutocompleteExclusionBanner: Boolean = false
 
-    var autocompleteLocalPort: Int = DEFAULT_AUTOCOMPLETE_LOCAL_PORT
+    var openAiBaseUrl: String = DEFAULT_OPENAI_BASE_URL
         set(value) {
-            field = value.coerceIn(1, 65535)
+            field = value.trim().ifBlank { DEFAULT_OPENAI_BASE_URL }
             notifySettingsChanged()
         }
 
-    val autocompleteLocalMode: Boolean
-        get() = true
+    var openAiProxy: String = ""
+        set(value) {
+            field = value.trim()
+            notifySettingsChanged()
+        }
+
+    var openAiApiKey: String = ""
+        set(value) {
+            field = value.trim()
+            notifySettingsChanged()
+        }
+
+    var openAiModel: String = DEFAULT_OPENAI_MODEL
+        set(value) {
+            field = value.trim().ifBlank { DEFAULT_OPENAI_MODEL }
+            notifySettingsChanged()
+        }
+
+    var openAiTitle: String = DEFAULT_OPENAI_TITLE
+        set(value) {
+            field = value.trim().ifBlank { DEFAULT_OPENAI_TITLE }
+            notifySettingsChanged()
+        }
+
+    var openAiMaxTokens: Int = DEFAULT_OPENAI_MAX_TOKENS
+        set(value) {
+            field = value.coerceIn(1, 128_000)
+            notifySettingsChanged()
+        }
+
+    var openAiTemperature: Double = DEFAULT_OPENAI_TEMPERATURE
+        set(value) {
+            field = value.coerceIn(0.0, 2.0)
+            notifySettingsChanged()
+        }
+
+    var openAiRequestTimeoutMs: Int = DEFAULT_OPENAI_REQUEST_TIMEOUT_MS
+        set(value) {
+            field = value.coerceIn(1_000, 600_000)
+            notifySettingsChanged()
+        }
+
+    val isOpenAiConfigured: Boolean
+        get() = openAiBaseUrl.isNotBlank() && openAiApiKey.isNotBlank() && openAiModel.isNotBlank()
 
     fun notifySettingsChanged() {
         ApplicationManager.getApplication().invokeLater {
@@ -136,7 +183,14 @@ class SweepSettings : PersistentStateComponent<SweepSettings> {
     override fun loadState(state: SweepSettings) {
         XmlSerializerUtil.copyBean(state, this)
         autocompleteDebounceMs = autocompleteDebounceMs.coerceIn(10L, 1000L)
-        autocompleteLocalPort = autocompleteLocalPort.coerceIn(1, 65535)
+        openAiBaseUrl = openAiBaseUrl
+        openAiProxy = openAiProxy
+        openAiApiKey = openAiApiKey
+        openAiModel = openAiModel
+        openAiTitle = openAiTitle
+        openAiMaxTokens = openAiMaxTokens
+        openAiTemperature = openAiTemperature
+        openAiRequestTimeoutMs = openAiRequestTimeoutMs
         if (autocompleteExclusionPatterns.isEmpty()) {
             autocompleteExclusionPatterns = mutableSetOf(".env")
         }

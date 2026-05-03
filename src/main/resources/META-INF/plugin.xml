@@ -4,7 +4,7 @@
     <vendor email="support@sweep.dev" url="https://sweep.dev">Sweep AI</vendor>
 
     <description><![CDATA[
-    Local-server powered Sweep autocomplete for JetBrains IDEs.
+    OpenAI-compatible API powered Sweep autocomplete for JetBrains IDEs.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -21,7 +21,6 @@
         <notificationGroup id="Sweep Plugin Conflicts" displayType="BALLOON"/>
         <applicationService serviceImplementation="dev.sweep.assistant.settings.SweepSettings"/>
         <applicationService serviceImplementation="dev.sweep.assistant.settings.SweepMetaData"/>
-        <applicationService serviceImplementation="dev.sweep.assistant.services.LocalAutocompleteServerManager"/>
         <projectConfigurable
                 groupId="tools"
                 displayName="Sweep Autocomplete"
