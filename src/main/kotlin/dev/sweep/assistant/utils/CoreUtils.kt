@@ -273,9 +273,38 @@ class CaretPositionChangedAdapter(
 fun getPublicIPAddress(): String? = null
 
 fun getFirstWord(text: String): Pair<String, String>? {
-    val match = Regex("""\S+""").find(text) ?: return null
-    val remaining = text.removeRange(match.range)
-    return match.value to remaining
+    if (text.isEmpty()) return null
+
+    // Define word delimiters - space, tab, newline, and common punctuation
+    val wordDelimiters = setOf(' ', '\t', '\n', '.', '(', ')', '{', '}', '[', ']', ';', ',', ':', '!', '?')
+    var endIndex = 0
+
+    // Skip any leading whitespace
+    while (endIndex < text.length && text[endIndex].isWhitespace()) {
+        endIndex++
+    }
+
+    // Find the end of the next word
+    while (endIndex < text.length && text[endIndex] !in wordDelimiters) {
+        endIndex++
+    }
+
+    // Include the delimiter if it's a space (common case for natural text flow)
+    if (endIndex < text.length && text[endIndex] == ' ') {
+        endIndex++
+    }
+
+    // If no word was found (endIndex is 0), return the first character
+    if (endIndex == 0) {
+        val firstChar = text.substring(0, 1)
+        val remainingContent = text.substring(1)
+        return Pair(firstChar, remainingContent)
+    }
+
+    val firstWord = text.substring(0, endIndex)
+    val remainingContent = text.substring(endIndex)
+
+    return Pair(firstWord, remainingContent)
 }
 
 fun Char.requiresSpecialFontHandling(): Boolean =
