@@ -2,12 +2,15 @@ package dev.sweep.assistant.settings
 
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
+import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.Dimension
-import javax.swing.Box
-import javax.swing.BoxLayout
+import java.awt.Font
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import java.awt.Insets
 import javax.swing.JCheckBox
 import javax.swing.JComponent
 import javax.swing.JLabel
@@ -30,12 +33,14 @@ class SweepSettingsConfigurable(
     private var exclusionPatterns: JTextField? = null
 
     override fun createComponent(): JComponent {
-        val panel = JPanel(BorderLayout())
-        panel.border = JBUI.Borders.empty(16)
+        val panel =
+            JPanel(BorderLayout()).apply {
+                border = JBUI.Borders.empty(16)
+            }
 
-        val content =
-            JPanel().apply {
-                layout = BoxLayout(this, BoxLayout.Y_AXIS)
+        val form =
+            JPanel(GridBagLayout()).apply {
+                isOpaque = false
             }
 
         autocompleteEnabled = JCheckBox("Enable autocomplete", settings.nextEditPredictionFlagOn)
@@ -43,14 +48,24 @@ class SweepSettingsConfigurable(
         acceptWordOnRightArrow = JCheckBox("Accept next suggested word with Right Arrow", settings.acceptWordOnRightArrow)
         disableConflictingPlugins = JCheckBox("Automatically disable conflicting full-line completion", settings.disableConflictingPlugins)
         showAutocompleteBadge = JCheckBox("Show autocomplete accept hint", settings.showAutocompleteBadge)
-        localPort = JSpinner(SpinnerNumberModel(settings.autocompleteLocalPort, 1, 65535, 1))
-        debounceMs = JSpinner(SpinnerNumberModel(settings.autocompleteDebounceMs.toInt(), 10, 1000, 10))
-        exclusionPatterns = JBTextField(settings.autocompleteExclusionPatterns.joinToString(", "))
 
-        content.add(sectionLabel("Local server"))
-        content.add(row("Port", localPort!!))
-        content.add(Box.createRigidArea(Dimension(0, 12)))
-        content.add(sectionLabel("Behavior"))
+        localPort = compactSpinner(SpinnerNumberModel(settings.autocompleteLocalPort, 1, 65535, 1))
+        debounceMs = compactSpinner(SpinnerNumberModel(settings.autocompleteDebounceMs.toInt(), 10, 1000, 10))
+        exclusionPatterns =
+            JBTextField(settings.autocompleteExclusionPatterns.joinToString(", ")).apply {
+                preferredSize = JBUI.size(420, preferredSize.height)
+                minimumSize = JBUI.size(260, preferredSize.height)
+                emptyText.text = ".env, .pem, node_modules/"
+                toolTipText =
+                    "Comma-separated suffixes and path prefixes. Examples: .env, .pem, node_modules/, build/"
+            }
+
+        var row = 0
+        row = addSection(form, row, "Local server")
+        row = addField(form, row, "Port:", localPort!!)
+        row = addGap(form, row, 10)
+
+        row = addSection(form, row, "Behavior")
         listOf(
             autocompleteEnabled,
             automaticAutocomplete,
@@ -58,31 +73,156 @@ class SweepSettingsConfigurable(
             disableConflictingPlugins,
             showAutocompleteBadge,
         ).forEach {
-            content.add(it)
-            content.add(Box.createRigidArea(Dimension(0, 6)))
+            row = addCheckBox(form, row, it!!)
         }
-        content.add(row("Debounce, ms", debounceMs!!))
-        content.add(row("Excluded file suffixes/prefixes", exclusionPatterns!!))
+        row = addField(form, row, "Debounce, ms:", debounceMs!!)
+        row = addGap(form, row, 10)
 
-        panel.add(content, BorderLayout.NORTH)
+        row = addSection(form, row, "Excluded files")
+        row = addField(form, row, "Patterns:", exclusionPatterns!!)
+        row =
+            addHint(
+                form,
+                row,
+                "Use comma-separated suffixes and path prefixes. Examples: .env, .pem, node_modules/, build/",
+            )
+        addVerticalFiller(form, row)
+
+        panel.add(form, BorderLayout.NORTH)
         return panel
     }
 
-    private fun sectionLabel(text: String): JLabel =
-        JLabel(text).apply {
-            border = JBUI.Borders.empty(0, 0, 8, 0)
-            font = font.deriveFont(font.style or java.awt.Font.BOLD)
+    private fun compactSpinner(model: SpinnerNumberModel): JSpinner =
+        JSpinner(model).apply {
+            preferredSize = JBUI.size(96, preferredSize.height)
+            minimumSize = preferredSize
+            maximumSize = preferredSize
         }
 
-    private fun row(
+    private fun addSection(
+        form: JPanel,
+        row: Int,
+        text: String,
+    ): Int {
+        val label =
+            JLabel(text).apply {
+                font = font.deriveFont(font.style or Font.BOLD)
+            }
+        form.add(
+            label,
+            GridBagConstraints().apply {
+                gridx = 0
+                gridy = row
+                gridwidth = 2
+                anchor = GridBagConstraints.WEST
+                insets = Insets(0, 0, 8, 0)
+            },
+        )
+        return row + 1
+    }
+
+    private fun addCheckBox(
+        form: JPanel,
+        row: Int,
+        checkBox: JCheckBox,
+    ): Int {
+        form.add(
+            checkBox,
+            GridBagConstraints().apply {
+                gridx = 0
+                gridy = row
+                gridwidth = 2
+                anchor = GridBagConstraints.WEST
+                fill = GridBagConstraints.NONE
+                insets = Insets(0, 0, 6, 0)
+            },
+        )
+        return row + 1
+    }
+
+    private fun addField(
+        form: JPanel,
+        row: Int,
         label: String,
         component: JComponent,
-    ): JPanel =
-        JPanel(BorderLayout(8, 0)).apply {
-            border = JBUI.Borders.empty(4, 0)
-            add(JLabel(label), BorderLayout.WEST)
-            add(component, BorderLayout.CENTER)
-        }
+    ): Int {
+        form.add(
+            JLabel(label),
+            GridBagConstraints().apply {
+                gridx = 0
+                gridy = row
+                anchor = GridBagConstraints.WEST
+                insets = Insets(0, 0, 6, 12)
+            },
+        )
+        form.add(
+            component,
+            GridBagConstraints().apply {
+                gridx = 1
+                gridy = row
+                anchor = GridBagConstraints.WEST
+                fill = GridBagConstraints.NONE
+                insets = Insets(0, 0, 6, 0)
+            },
+        )
+        return row + 1
+    }
+
+    private fun addHint(
+        form: JPanel,
+        row: Int,
+        text: String,
+    ): Int {
+        form.add(
+            JLabel(text).apply {
+                foreground = JBColor.GRAY
+            },
+            GridBagConstraints().apply {
+                gridx = 1
+                gridy = row
+                anchor = GridBagConstraints.WEST
+                fill = GridBagConstraints.NONE
+                insets = Insets(0, 0, 10, 0)
+            },
+        )
+        return row + 1
+    }
+
+    private fun addGap(
+        form: JPanel,
+        row: Int,
+        height: Int,
+    ): Int {
+        form.add(
+            JPanel().apply {
+                isOpaque = false
+                preferredSize = Dimension(1, height)
+            },
+            GridBagConstraints().apply {
+                gridx = 0
+                gridy = row
+                gridwidth = 2
+            },
+        )
+        return row + 1
+    }
+
+    private fun addVerticalFiller(
+        form: JPanel,
+        row: Int,
+    ) {
+        form.add(
+            JPanel().apply { isOpaque = false },
+            GridBagConstraints().apply {
+                gridx = 0
+                gridy = row
+                gridwidth = 2
+                weightx = 1.0
+                weighty = 1.0
+                fill = GridBagConstraints.BOTH
+            },
+        )
+    }
 
     override fun isModified(): Boolean =
         autocompleteEnabled?.isSelected != settings.nextEditPredictionFlagOn ||
