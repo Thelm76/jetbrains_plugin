@@ -7,10 +7,10 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.Dimension
+import java.awt.FlowLayout
 import java.awt.Font
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
-import java.awt.Insets
+import javax.swing.Box
+import javax.swing.BoxLayout
 import javax.swing.JCheckBox
 import javax.swing.JComponent
 import javax.swing.JLabel
@@ -39,7 +39,8 @@ class SweepSettingsConfigurable(
             }
 
         val form =
-            JPanel(GridBagLayout()).apply {
+            JPanel().apply {
+                layout = BoxLayout(this, BoxLayout.Y_AXIS)
                 isOpaque = false
             }
 
@@ -49,8 +50,8 @@ class SweepSettingsConfigurable(
         disableConflictingPlugins = JCheckBox("Automatically disable conflicting full-line completion", settings.disableConflictingPlugins)
         showAutocompleteBadge = JCheckBox("Show autocomplete accept hint", settings.showAutocompleteBadge)
 
-        localPort = compactSpinner(SpinnerNumberModel(settings.autocompleteLocalPort, 1, 65535, 1))
-        debounceMs = compactSpinner(SpinnerNumberModel(settings.autocompleteDebounceMs.toInt(), 10, 1000, 10))
+        localPort = compactSpinner(SpinnerNumberModel(settings.autocompleteLocalPort, 1, 65535, 1), "#")
+        debounceMs = compactSpinner(SpinnerNumberModel(settings.autocompleteDebounceMs.toInt(), 10, 1000, 10), "#")
         exclusionPatterns =
             JBTextField(settings.autocompleteExclusionPatterns.joinToString(", ")).apply {
                 preferredSize = JBUI.size(420, preferredSize.height)
@@ -60,168 +61,64 @@ class SweepSettingsConfigurable(
                     "Comma-separated suffixes and path prefixes. Examples: .env, .pem, node_modules/, build/"
             }
 
-        var row = 0
-        row = addSection(form, row, "Local server")
-        row = addField(form, row, "Port:", localPort!!)
-        row = addGap(form, row, 10)
+        // Local server section
+        form.add(sectionLabel("Local server"))
+        form.add(labeledRow("Port:", localPort!!))
+        form.add(Box.createVerticalStrut(10))
 
-        row = addSection(form, row, "Behavior")
-        listOf(
-            autocompleteEnabled,
-            automaticAutocomplete,
-            acceptWordOnRightArrow,
-            disableConflictingPlugins,
-            showAutocompleteBadge,
-        ).forEach {
-            row = addCheckBox(form, row, it!!)
-        }
-        row = addField(form, row, "Debounce, ms:", debounceMs!!)
-        row = addGap(form, row, 10)
+        // Behavior section
+        form.add(sectionLabel("Behavior"))
+        form.add(autocompleteEnabled!!)
+        form.add(automaticAutocomplete!!)
+        form.add(acceptWordOnRightArrow!!)
+        form.add(disableConflictingPlugins!!)
+        form.add(showAutocompleteBadge!!)
+        form.add(labeledRow("Debounce, ms:", debounceMs!!))
+        form.add(Box.createVerticalStrut(10))
 
-        row = addSection(form, row, "Excluded files")
-        row = addField(form, row, "Patterns:", exclusionPatterns!!)
-        row =
-            addHint(
-                form,
-                row,
-                "Use comma-separated suffixes and path prefixes. Examples: .env, .pem, node_modules/, build/",
-            )
-        addVerticalFiller(form, row)
+        // Excluded files section
+        form.add(sectionLabel("Excluded files"))
+        form.add(labeledRow("Patterns:", exclusionPatterns!!))
+        form.add(hintLabel("Use comma-separated suffixes and path prefixes. Examples: .env, .pem, node_modules/, build/"))
+
+        form.add(Box.createVerticalGlue())
 
         panel.add(form, BorderLayout.NORTH)
         return panel
     }
 
-    private fun compactSpinner(model: SpinnerNumberModel): JSpinner =
+    private fun compactSpinner(model: SpinnerNumberModel, format: String = "#"): JSpinner =
         JSpinner(model).apply {
             preferredSize = JBUI.size(96, preferredSize.height)
             minimumSize = preferredSize
             maximumSize = preferredSize
+            editor = JSpinner.NumberEditor(this, format)
         }
 
-    private fun addSection(
-        form: JPanel,
-        row: Int,
-        text: String,
-    ): Int {
-        val label =
-            JLabel(text).apply {
-                font = font.deriveFont(font.style or Font.BOLD)
-            }
-        form.add(
-            label,
-            GridBagConstraints().apply {
-                gridx = 0
-                gridy = row
-                gridwidth = 2
-                anchor = GridBagConstraints.WEST
-                insets = Insets(0, 0, 8, 0)
-            },
-        )
-        return row + 1
-    }
+    private fun sectionLabel(text: String): JComponent =
+        JLabel(text).apply {
+            font = font.deriveFont(font.style or Font.BOLD)
+            border = JBUI.Borders.emptyBottom(8)
+            alignmentX = JComponent.LEFT_ALIGNMENT
+        }
 
-    private fun addCheckBox(
-        form: JPanel,
-        row: Int,
-        checkBox: JCheckBox,
-    ): Int {
-        form.add(
-            checkBox,
-            GridBagConstraints().apply {
-                gridx = 0
-                gridy = row
-                gridwidth = 2
-                anchor = GridBagConstraints.WEST
-                fill = GridBagConstraints.NONE
-                insets = Insets(0, 0, 6, 0)
-            },
-        )
-        return row + 1
-    }
+    private fun hintLabel(text: String): JComponent =
+        JLabel(text).apply {
+            foreground = JBColor.GRAY
+            border = JBUI.Borders.empty(0, 0, 10, 0)
+            alignmentX = JComponent.LEFT_ALIGNMENT
+        }
 
-    private fun addField(
-        form: JPanel,
-        row: Int,
-        label: String,
-        component: JComponent,
-    ): Int {
-        form.add(
-            JLabel(label),
-            GridBagConstraints().apply {
-                gridx = 0
-                gridy = row
-                anchor = GridBagConstraints.WEST
-                insets = Insets(0, 0, 6, 12)
-            },
-        )
-        form.add(
-            component,
-            GridBagConstraints().apply {
-                gridx = 1
-                gridy = row
-                anchor = GridBagConstraints.WEST
-                fill = GridBagConstraints.NONE
-                insets = Insets(0, 0, 6, 0)
-            },
-        )
-        return row + 1
-    }
-
-    private fun addHint(
-        form: JPanel,
-        row: Int,
-        text: String,
-    ): Int {
-        form.add(
-            JLabel(text).apply {
-                foreground = JBColor.GRAY
-            },
-            GridBagConstraints().apply {
-                gridx = 1
-                gridy = row
-                anchor = GridBagConstraints.WEST
-                fill = GridBagConstraints.NONE
-                insets = Insets(0, 0, 10, 0)
-            },
-        )
-        return row + 1
-    }
-
-    private fun addGap(
-        form: JPanel,
-        row: Int,
-        height: Int,
-    ): Int {
-        form.add(
-            JPanel().apply {
+    private fun labeledRow(label: String, component: JComponent): JComponent {
+        val panel =
+            JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
                 isOpaque = false
-                preferredSize = Dimension(1, height)
-            },
-            GridBagConstraints().apply {
-                gridx = 0
-                gridy = row
-                gridwidth = 2
-            },
-        )
-        return row + 1
-    }
-
-    private fun addVerticalFiller(
-        form: JPanel,
-        row: Int,
-    ) {
-        form.add(
-            JPanel().apply { isOpaque = false },
-            GridBagConstraints().apply {
-                gridx = 0
-                gridy = row
-                gridwidth = 2
-                weightx = 1.0
-                weighty = 1.0
-                fill = GridBagConstraints.BOTH
-            },
-        )
+                alignmentX = JComponent.LEFT_ALIGNMENT
+                border = JBUI.Borders.emptyBottom(6)
+            }
+        panel.add(JLabel(label).apply { border = JBUI.Borders.emptyRight(12) })
+        panel.add(component)
+        return panel
     }
 
     override fun isModified(): Boolean =
