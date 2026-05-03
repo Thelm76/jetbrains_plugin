@@ -19,17 +19,17 @@ jobs:
 #              ./gradlew runIdeForUiTests > jetbrains/build/reports/idea.log &
 #            runTests: |
 #              export DISPLAY=:99.0
-#              ./gradlew test --tests "dev.sweep.assistant.e2e.*"
+#              ./gradlew test --tests "dev.sweet.assistant.e2e.*"
 #            url: http://127.0.0.1:8082
 #            reportName: ui-test-fails-report-linux
 #          - os: macOS-latest-xlarge
 #            runIde: ./gradlew runIdeForUiTests &
-#            runTests: ./gradlew test --tests "dev.sweep.assistant.e2e.*"
+#            runTests: ./gradlew test --tests "dev.sweet.assistant.e2e.*"
 #            url: http://127.0.0.1:8082
 #            reportName: ui-test-fails-report-mac
           - os: windows-larger
             runIde: start gradlew.bat runIdeForUiTests
-            runTests: ./gradlew test --tests "dev.sweep.assistant.e2e.*"
+            runTests: ./gradlew test --tests "dev.sweet.assistant.e2e.*"
             url: http://localhost:8082
             reportName: ui-test-fails-report-windows
 

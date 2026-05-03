@@ -9,10 +9,10 @@ plugins {
     kotlin("plugin.serialization") version "1.9.20"
 }
 
-val pluginId = "dev.sweep.assistant"
-val pluginName = "Sweep Autocomplete"
+val pluginId = "dev.sweet.assistant"
+val pluginName = "Sweet Autocomplete"
 println("Building plugin: $pluginName with ID: $pluginId")
-group = "dev.sweep"
+group = "dev.sweet"
 version = "1.29.3"
 
 repositories {
@@ -101,7 +101,7 @@ tasks {
     }
 
     buildPlugin {
-        archiveBaseName.set("sweepai")
+        archiveBaseName.set("sweetai")
     }
 
     runIde {

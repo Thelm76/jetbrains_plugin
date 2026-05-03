@@ -67,7 +67,7 @@ This Skill helps you update the changelog in both `UpdateChangesNotification.kt`
 - The changelog should reflect what users will see in the "What's new" notification
 - Keep entries user-facing and technical details minimal
 - If a change is internal-only, consider whether it should be mentioned
-- The version number is automatically pulled from `getCurrentSweepPluginVersion()`
+- The version number is automatically pulled from `getCurrentSweetPluginVersion()`
 - Make sure to update ALL three content strings in UpdateChangesNotification.kt (cloudContent, gatewayContent, nonCloudContent)
 
 ## Troubleshooting

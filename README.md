@@ -1,4 +1,4 @@
-# Jetbrains Extension for Sweep
+# Jetbrains Extension for Sweet
 Open in IntelliJ and click Run Plugin on the top right corner.
 And then download required packages.
 
@@ -30,15 +30,15 @@ sethandler <Tab> a:ide
 Or if it doesn't work:
 
 ```vim
-map <Tab> :action dev.sweep.assistant.autocomplete.edit.AcceptEditCompletionAction<CR>
+map <Tab> :action dev.sweet.assistant.autocomplete.edit.AcceptEditCompletionAction<CR>
 ```
 
 You can also customize the IdeaVim mapping to use different keys:
 
 ```vim
 " Use Enter to accept completions
-map <CR> :action dev.sweep.assistant.autocomplete.edit.AcceptEditCompletionAction<CR>
+map <CR> :action dev.sweet.assistant.autocomplete.edit.AcceptEditCompletionAction<CR>
 
 " Use Ctrl+Y to reject completions
-map <C-y> :action dev.sweep.assistant.autocomplete.edit.RejectEditCompletionAction<CR>
+map <C-y> :action dev.sweet.assistant.autocomplete.edit.RejectEditCompletionAction<CR>
 ```

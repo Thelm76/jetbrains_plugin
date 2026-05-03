@@ -1,10 +1,10 @@
 <idea-plugin>
-    <id>dev.sweep.assistant</id>
-    <name>Sweep Autocomplete</name>
-    <vendor email="support@sweep.dev" url="https://sweep.dev">Sweep AI</vendor>
+    <id>dev.sweet.assistant</id>
+    <name>Sweet Autocomplete</name>
+    <vendor email="support@sweet.dev" url="https://sweet.dev">Sweet AI</vendor>
 
     <description><![CDATA[
-    OpenAI-compatible API powered Sweep autocomplete for JetBrains IDEs.
+    OpenAI-compatible API powered Sweet autocomplete for JetBrains IDEs.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -16,45 +16,45 @@
     <depends optional="true" config-file="ruby.xml">org.jetbrains.plugins.ruby</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <postStartupActivity implementation="dev.sweep.assistant.startup.SweepStartupActivity"/>
-        <notificationGroup id="Sweep Autocomplete" displayType="BALLOON"/>
-        <notificationGroup id="Sweep Plugin Conflicts" displayType="BALLOON"/>
-        <applicationService serviceImplementation="dev.sweep.assistant.settings.SweepSettings"/>
-        <applicationService serviceImplementation="dev.sweep.assistant.settings.SweepMetaData"/>
+        <postStartupActivity implementation="dev.sweet.assistant.startup.SweetStartupActivity"/>
+        <notificationGroup id="Sweet Autocomplete" displayType="BALLOON"/>
+        <notificationGroup id="Sweet Plugin Conflicts" displayType="BALLOON"/>
+        <applicationService serviceImplementation="dev.sweet.assistant.settings.SweetSettings"/>
+        <applicationService serviceImplementation="dev.sweet.assistant.settings.SweetMetaData"/>
         <projectConfigurable
                 groupId="tools"
-                displayName="Sweep Autocomplete"
-                id="dev.sweep.assistant.settings.SweepSettingsConfigurable"
-                instance="dev.sweep.assistant.settings.SweepSettingsConfigurable"/>
-        <editorNotificationProvider implementation="dev.sweep.assistant.notifications.AutocompleteExclusionNotificationProvider"/>
-        <statusBarWidgetFactory id="SweepAutocompleteStatus"
-                                implementation="dev.sweep.assistant.statusbar.AutocompleteStatusBarWidgetFactory"/>
+                displayName="Sweet Autocomplete"
+                id="dev.sweet.assistant.settings.SweetSettingsConfigurable"
+                instance="dev.sweet.assistant.settings.SweetSettingsConfigurable"/>
+        <editorNotificationProvider implementation="dev.sweet.assistant.notifications.AutocompleteExclusionNotificationProvider"/>
+        <statusBarWidgetFactory id="SweetAutocompleteStatus"
+                                implementation="dev.sweet.assistant.statusbar.AutocompleteStatusBarWidgetFactory"/>
     </extensions>
 
     <actions>
-        <action id="dev.sweep.assistant.autocomplete.edit.AcceptEditCompletionAction"
-                class="dev.sweep.assistant.autocomplete.edit.AcceptEditCompletionAction"
+        <action id="dev.sweet.assistant.autocomplete.edit.AcceptEditCompletionAction"
+                class="dev.sweet.assistant.autocomplete.edit.AcceptEditCompletionAction"
                 text="Accept Autocomplete Suggestion"
                 description="Accept Autocomplete Suggestion">
             <keyboard-shortcut keymap="$default" first-keystroke="TAB"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="TAB"/>
         </action>
-        <action id="dev.sweep.assistant.autocomplete.edit.RejectEditCompletionAction"
-                class="dev.sweep.assistant.autocomplete.edit.RejectEditCompletionAction"
+        <action id="dev.sweet.assistant.autocomplete.edit.RejectEditCompletionAction"
+                class="dev.sweet.assistant.autocomplete.edit.RejectEditCompletionAction"
                 text="Reject Autocomplete Suggestion"
                 description="Reject Autocomplete Suggestion">
             <keyboard-shortcut keymap="$default" first-keystroke="ESCAPE"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="ESCAPE"/>
         </action>
-        <action id="dev.sweep.assistant.autocomplete.edit.TriggerEditCompletionAction"
-                class="dev.sweep.assistant.autocomplete.edit.TriggerEditCompletionAction"
+        <action id="dev.sweet.assistant.autocomplete.edit.TriggerEditCompletionAction"
+                class="dev.sweet.assistant.autocomplete.edit.TriggerEditCompletionAction"
                 text="Trigger Autocomplete Suggestion"
                 description="Request an autocomplete suggestion at the current caret position">
             <keyboard-shortcut keymap="$default" first-keystroke="alt BACK_SLASH"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt BACK_SLASH"/>
         </action>
-        <action id="dev.sweep.assistant.autocomplete.edit.ClearAutocompleteRejectionCacheAction"
-                class="dev.sweep.assistant.autocomplete.edit.ClearAutocompleteRejectionCacheAction"
+        <action id="dev.sweet.assistant.autocomplete.edit.ClearAutocompleteRejectionCacheAction"
+                class="dev.sweet.assistant.autocomplete.edit.ClearAutocompleteRejectionCacheAction"
                 text="Show Last Rejected Suggestion"
                 description="Undo cancellation and force a new autocomplete suggestion">
             <keyboard-shortcut keymap="$default" first-keystroke="alt shift BACK_SPACE"/>

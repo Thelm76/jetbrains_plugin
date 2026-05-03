@@ -4,7 +4,7 @@ jetbrains_dir="$HOME/Library/Application Support/JetBrains"
 
 for idea_dir in "$jetbrains_dir"/{IntelliJIdea*,PyCharm*}; do
     if [ -d "$idea_dir" ]; then
-        find "$idea_dir/plugins" -type d -name "sweepai*" -exec rm -rf {} +
+        find "$idea_dir/plugins" -type d -name "sweetai*" -exec rm -rf {} +
     fi
 done
 
