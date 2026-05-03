@@ -141,6 +141,13 @@
             <keyboard-shortcut keymap="$default" first-keystroke="ESCAPE"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="ESCAPE"/>
         </action>
+        <action id="dev.sweep.assistant.autocomplete.edit.TriggerEditCompletionAction"
+                class="dev.sweep.assistant.autocomplete.edit.TriggerEditCompletionAction"
+                text="Trigger Autocomplete Suggestion"
+                description="Request a Sweep autocomplete suggestion at the current caret position">
+            <keyboard-shortcut keymap="$default" first-keystroke="alt BACK_SLASH"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt BACK_SLASH"/>
+        </action>
         <action id="dev.sweep.assistant.autocomplete.edit.ClearAutocompleteRejectionCacheAction"
                 class="dev.sweep.assistant.autocomplete.edit.ClearAutocompleteRejectionCacheAction"
                 text="Show Last Rejected Suggestion"

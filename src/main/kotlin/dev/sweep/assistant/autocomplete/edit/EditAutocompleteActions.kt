@@ -6,6 +6,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
+import dev.sweep.assistant.settings.SweepSettings
 
 /**
  * Base class for edit completion actions (accept/reject).
@@ -91,5 +92,36 @@ class RejectEditCompletionAction : EditCompletionActionBase() {
         editor: Editor,
     ) {
         RecentEditsTracker.getInstance(project).rejectSuggestion()
+    }
+}
+
+/**
+ * Action to request a new autocomplete suggestion explicitly.
+ *
+ * This is used when automatic autocomplete is disabled and the user wants suggestions
+ * only on a keymap shortcut.
+ */
+class TriggerEditCompletionAction : AnAction() {
+    companion object {
+        const val ACTION_ID = "dev.sweep.assistant.autocomplete.edit.TriggerEditCompletionAction"
+    }
+
+    override fun getActionUpdateThread() = ActionUpdateThread.BGT
+
+    override fun update(event: AnActionEvent) {
+        val project = event.project
+        val editor = event.getData(CommonDataKeys.EDITOR)
+        event.presentation.isEnabledAndVisible =
+            project != null &&
+            !project.isDisposed &&
+            editor != null &&
+            SweepSettings.getInstance().nextEditPredictionFlagOn
+    }
+
+    override fun actionPerformed(event: AnActionEvent) {
+        val project = event.project ?: return
+        event.getData(CommonDataKeys.EDITOR) ?: return
+
+        RecentEditsTracker.getInstance(project).requestAutocompleteSuggestion()
     }
 }

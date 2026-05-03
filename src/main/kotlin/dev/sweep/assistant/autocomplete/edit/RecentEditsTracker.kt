@@ -335,6 +335,7 @@ class RecentEditsTracker(
         val id: String = UUID.randomUUID().toString(),
         var editorState: EditorState,
         val requestTime: Long = System.currentTimeMillis(),
+        val triggeredManually: Boolean = false,
     )
 
     private var currentJob: Job? = null
@@ -454,6 +455,10 @@ class RecentEditsTracker(
      * This should be called instead of debouncer.schedule() directly.
      */
     fun scheduleAutocompleteWithPrefetch() {
+        if (!SweepSettings.getInstance().automaticAutocompleteOn) {
+            return
+        }
+
         debouncer.schedule()
 
         // Only prefetch if caching is enabled (feature flag is ON)
@@ -1872,7 +1877,15 @@ class RecentEditsTracker(
         return false
     }
 
-    fun processLatestEdit() {
+    fun requestAutocompleteSuggestion() {
+        processLatestEdit(triggeredManually = true)
+    }
+
+    private fun processLatestEdit(triggeredManually: Boolean = false) {
+        if (!triggeredManually && !SweepSettings.getInstance().automaticAutocompleteOn) {
+            return
+        }
+
         currentJob?.cancel()
         currentJob =
             scope.launch {
@@ -1912,6 +1925,7 @@ class RecentEditsTracker(
                 val requestEntry =
                     AutocompleteRequestEntry(
                         editorState = editorState,
+                        triggeredManually = triggeredManually,
                     )
 
                 val deferred = CompletableDeferred<Pair<AutocompleteRequestEntry, NextEditAutocompleteResponse?>>()
@@ -1963,6 +1977,10 @@ class RecentEditsTracker(
                     try {
                         val (request, response) = completionChannel.receive()
                         response ?: continue
+
+                        if (!request.triggeredManually && !SweepSettings.getInstance().automaticAutocompleteOn) {
+                            continue
+                        }
 //                        println("Fetch jobs size: ${fetchJobs.size}")
 
                         // First check if a change has already been proposed:
@@ -2509,6 +2527,10 @@ class RecentEditsTracker(
 
             // Check if we currently have a suggestion showing
             val current = currentSuggestion
+            if (current == null && !SweepSettings.getInstance().automaticAutocompleteOn) {
+                suggestion.dispose()
+                return@invokeLater
+            }
 
             // Queue the import fix with validation data
             importFixQueue.add(

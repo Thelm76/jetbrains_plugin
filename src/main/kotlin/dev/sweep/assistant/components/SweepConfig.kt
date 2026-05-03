@@ -1004,6 +1004,12 @@ class SweepConfig(
         state.showAutocompleteBadge = enabled
     }
 
+    fun isAutomaticAutocompleteEnabled(): Boolean = SweepSettings.getInstance().automaticAutocompleteOn
+
+    fun updateAutomaticAutocompleteEnabled(enabled: Boolean) {
+        SweepSettings.getInstance().automaticAutocompleteOn = enabled
+    }
+
     // Autocomplete exclusion patterns
     // Returns the union of v1 and v2 patterns to ensure existing users get .env added
     fun getAutocompleteExclusionPatterns(): Set<String> = state.autocompleteExclusionPatterns + state.autocompleteExclusionPatternsV2
@@ -3464,12 +3470,24 @@ class SweepConfig(
             }
         }
 
+        val automaticAutocompleteCheckbox =
+            JCheckBox("Show autocomplete automatically while typing").apply {
+                isSelected = isAutomaticAutocompleteEnabled()
+                isEnabled = sweepSettings.nextEditPredictionFlagOn
+                withSweepFont(project)
+                toolTipText = "When disabled, Sweep autocomplete suggestions are shown only from the keymap shortcut"
+                addActionListener {
+                    updateAutomaticAutocompleteEnabled(isSelected)
+                }
+            }
+
         val nextEditCompletionFlagCheckbox =
             JCheckBox("Enable Next Edit Autocomplete").apply {
                 isSelected = sweepSettings.nextEditPredictionFlagOn
                 withSweepFont(project)
                 addActionListener {
                     sweepSettings.nextEditPredictionFlagOn = isSelected
+                    automaticAutocompleteCheckbox.isEnabled = isSelected
                 }
             }
 
@@ -4050,6 +4068,18 @@ class SweepConfig(
                                     border = JBUI.Borders.empty(0, 16)
                                     add(Box.createRigidArea(Dimension(0, 8.scaled)))
                                     add(nextEditCompletionFlagCheckbox)
+                                    add(Box.createRigidArea(Dimension(0, 4.scaled)))
+                                    add(automaticAutocompleteCheckbox)
+                                    add(
+                                        JLabel(
+                                            "Disable this to request suggestions only with the 'Trigger Autocomplete Suggestion' keymap action",
+                                        ).apply {
+                                            withSweepFont(project, scale = 0.85f)
+                                            foreground = JBColor.GRAY
+                                            font = font.deriveFont(Font.ITALIC)
+                                            border = JBUI.Borders.emptyLeft(24)
+                                        },
+                                    )
                                     add(Box.createRigidArea(Dimension(0, 4.scaled)))
 
                                     // Toggle to disable Full Line completion conflicts
@@ -4819,7 +4849,7 @@ class SweepConfig(
                                 layout = BoxLayout(this, BoxLayout.Y_AXIS)
                                 border = JBUI.Borders.empty(4, 16, 8, 16)
                                 add(
-                                    JCheckBox("Enable Local Autocomplete Server").apply {
+                                    JCheckBox("Use Local Autocomplete Server").apply {
                                         isSelected = isAutocompleteLocalMode()
                                         withSweepFont(project)
                                         addActionListener {
@@ -4829,7 +4859,7 @@ class SweepConfig(
                                 )
                                 add(Box.createRigidArea(Dimension(0, 2.scaled)))
                                 add(
-                                    JLabel("Runs autocomplete locally via 'uvx sweep-autocomplete'. Will auto-install uv if needed.").apply {
+                                    JLabel("Uses an autocomplete server already running on localhost. The plugin will not start it.").apply {
                                         withSweepFont(project, scale = 0.85f)
                                         foreground = JBColor.GRAY
                                         font = font.deriveFont(Font.ITALIC)
@@ -4840,7 +4870,7 @@ class SweepConfig(
                             gbc,
                         )
 
-                        // Port + Start Server inline
+                        // Port
                         gbc.gridy = 8
                         add(
                             JPanel().apply {
@@ -4868,15 +4898,6 @@ class SweepConfig(
                                                 }
                                             },
                                         )
-                                    },
-                                )
-                                add(Box.createRigidArea(Dimension(12.scaled, 0)))
-                                add(
-                                    JButton("Start Server", AllIcons.Actions.Execute).apply {
-                                        withSweepFont(project)
-                                        addActionListener {
-                                            LocalAutocompleteServerManager.getInstance().startServerInTerminal(project)
-                                        }
                                     },
                                 )
                                 add(Box.createHorizontalGlue())

@@ -32,6 +32,7 @@ class SweepSettings : PersistentStateComponent<SweepSettings> {
         private const val DEFAULT_SWEEP_URL = ""
         private const val DEFAULT_BETA_FLAG_ON = false
         private const val DEFAULT_NEXT_EDIT_PREDICTION_ON = true
+        private const val DEFAULT_AUTOMATIC_AUTOCOMPLETE_ON = true
         private const val DEFAULT_ACCEPT_WORD_ON_RIGHT_ARROW = true
         private const val DEFAULT_ANTHROPIC_API_KEY = ""
         private const val DEFAULT_PLAY_NOTIFICATION_ON_STREAM_END = false
@@ -98,6 +99,16 @@ class SweepSettings : PersistentStateComponent<SweepSettings> {
                 if (!value) {
                     TelemetryService.getInstance().sendUsageEvent(EventType.AUTOCOMPLETE_DISABLED)
                 }
+            } else {
+                field = value
+            }
+        }
+
+    var automaticAutocompleteOn: Boolean = DEFAULT_AUTOMATIC_AUTOCOMPLETE_ON
+        set(value) {
+            if (value != field) {
+                field = value
+                notifySettingsChanged()
             } else {
                 field = value
             }

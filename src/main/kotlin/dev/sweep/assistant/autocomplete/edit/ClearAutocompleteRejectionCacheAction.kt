@@ -31,6 +31,6 @@ class ClearAutocompleteRejectionCacheAction : AnAction() {
         AutocompleteRejectionCache.getInstance(project).clearCache()
 
         // Trigger a new autocomplete suggestion
-        RecentEditsTracker.getInstance(project).processLatestEdit()
+        RecentEditsTracker.getInstance(project).requestAutocompleteSuggestion()
     }
 }

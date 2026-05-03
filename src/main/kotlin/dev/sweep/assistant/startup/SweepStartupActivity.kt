@@ -221,16 +221,6 @@ class SweepStartupActivity :
         SweepColorChangeService.getInstance(project)
         OSNotificationService.getInstance(project)
 
-        // Auto-start local autocomplete server if enabled and not already running
-        if (SweepSettings.getInstance().autocompleteLocalMode) {
-            ApplicationManager.getApplication().executeOnPooledThread {
-                val manager = LocalAutocompleteServerManager.getInstance()
-                if (!manager.isServerHealthy()) {
-                    manager.startServerInTerminal(project)
-                }
-            }
-        }
-
         // Send installation telemetry event on first run
         val metaData = SweepMetaData.getInstance()
         if (!metaData.hasSeenInstallationTelemetryEvent) {
