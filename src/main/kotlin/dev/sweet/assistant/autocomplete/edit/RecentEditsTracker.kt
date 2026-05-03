@@ -345,6 +345,7 @@ class RecentEditsTracker(
     private var consumerJob: Job? = null
     private val fetchJobs =
         ConcurrentHashMap<Long, CompletableDeferred<Pair<AutocompleteRequestEntry, NextEditAutocompleteResponse?>>>()
+    private val activeFetchJobs = ConcurrentHashMap<Long, Job>()
     private val mutex = Mutex()
     private val completionChannel =
         Channel<Pair<AutocompleteRequestEntry, NextEditAutocompleteResponse?>>(Channel.BUFFERED)
@@ -953,6 +954,7 @@ class RecentEditsTracker(
 
                 acceptanceDisposable?.dispose()
                 acceptanceDisposable = null
+                cancelActiveAutocompleteRequests()
 
                 val cursorPosition =
                     ApplicationManager.getApplication().runReadAction<Int> {
@@ -1947,43 +1949,78 @@ class RecentEditsTracker(
         manualLoadingRequestTime = null
     }
 
+    private fun cancelActiveAutocompleteRequests() {
+        currentJob?.cancel()
+        hideManualLoadingSpinner()
+
+        ioScope.launch {
+            val jobsToCancel =
+                mutex.withLock {
+                    val jobs = activeFetchJobs.values.toList()
+                    activeFetchJobs.clear()
+                    fetchJobs.values.forEach { it.cancel() }
+                    fetchJobs.clear()
+                    jobs
+                }
+
+            if (jobsToCancel.isNotEmpty()) {
+                requestStatusService.requestsCanceled()
+                jobsToCancel.forEach { it.cancel() }
+            }
+        }
+    }
+
     private fun fetchAutocompleteRequest(
         requestEntry: AutocompleteRequestEntry,
         deferred: CompletableDeferred<Pair<AutocompleteRequestEntry, NextEditAutocompleteResponse?>>,
-    ) = ioScope.launch {
-        requestStatusService.requestStarted()
-        try {
-            mutex.withLock {
-                // Cancel all previous requests
-                fetchJobs.values.forEach { it.cancel() }
-                fetchJobs.clear()
+    ) {
+        val fetchJob =
+            ioScope.launch(start = CoroutineStart.LAZY) {
+                requestStatusService.requestStarted()
+                try {
+                    mutex.withLock {
+                        // Cancel all previous requests
+                        activeFetchJobs
+                            .filterKeys { it != requestEntry.requestTime }
+                            .values
+                            .forEach { it.cancel() }
+                        activeFetchJobs.entries.removeIf { it.key != requestEntry.requestTime }
+                        fetchJobs.values.forEach { it.cancel() }
+                        fetchJobs.clear()
 
-                // Add the new request
-                fetchJobs[requestEntry.requestTime] = deferred
-            }
+                        // Add the new request
+                        fetchJobs[requestEntry.requestTime] = deferred
+                    }
 //            println("Sending request: ${requestEntry.id} at time ${requestEntry.requestTime}")
-            val response =
-                fetchNextEditAutocomplete(
-                    filePath = requestEntry.editorState.filePath,
-                    fileContents = requestEntry.editorState.documentText,
-                    caretPosition = requestEntry.editorState.cursorOffset,
-                )?.apply { adjustIndices(requestEntry.editorState.documentText) }
-            // println("Received response: ${response?.autocomplete_id} in ${System.currentTimeMillis() - requestEntry.requestTime}")
-            deferred.complete(requestEntry to response)
-            completionChannel.send(requestEntry to response)
-        } catch (e: Exception) {
-            // println("Error fetching autocomplete: ${e.message}")
-            deferred.complete(requestEntry to null)
-            completionChannel.send(requestEntry to null)
-        } finally {
-            mutex.withLock {
-                fetchJobs.remove(requestEntry.requestTime)
+                    val response =
+                        fetchNextEditAutocomplete(
+                            filePath = requestEntry.editorState.filePath,
+                            fileContents = requestEntry.editorState.documentText,
+                            caretPosition = requestEntry.editorState.cursorOffset,
+                        )?.apply { adjustIndices(requestEntry.editorState.documentText) }
+                    // println("Received response: ${response?.autocomplete_id} in ${System.currentTimeMillis() - requestEntry.requestTime}")
+                    deferred.complete(requestEntry to response)
+                    completionChannel.send(requestEntry to response)
+                } catch (e: CancellationException) {
+                    deferred.cancel(e)
+                    throw e
+                } catch (e: Exception) {
+                    // println("Error fetching autocomplete: ${e.message}")
+                    deferred.complete(requestEntry to null)
+                    completionChannel.send(requestEntry to null)
+                } finally {
+                    mutex.withLock {
+                        fetchJobs.remove(requestEntry.requestTime)
+                        activeFetchJobs.remove(requestEntry.requestTime)
+                    }
+                    requestStatusService.requestFinished()
+                    if (shouldShowManualLoadingSpinner(requestEntry.triggeredManually)) {
+                        hideManualLoadingSpinner(requestEntry.requestTime)
+                    }
+                }
             }
-            requestStatusService.requestFinished()
-            if (shouldShowManualLoadingSpinner(requestEntry.triggeredManually)) {
-                hideManualLoadingSpinner(requestEntry.requestTime)
-            }
-        }
+        activeFetchJobs[requestEntry.requestTime] = fetchJob
+        fetchJob.start()
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -2630,6 +2667,11 @@ class RecentEditsTracker(
         consumerJob = null
 
         // Clear fetch jobs synchronously
+        activeFetchJobs.forEach { (_, job) ->
+            job.cancel()
+        }
+        activeFetchJobs.clear()
+
         fetchJobs.forEach { (_, deferred) ->
             if (!deferred.isCompleted) {
                 deferred.cancel()

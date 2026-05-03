@@ -40,6 +40,12 @@ class AutocompleteRequestStatusService : Disposable {
         }
     }
 
+    fun requestsCanceled() {
+        if (activeRequestCount.getAndSet(0) > 0) {
+            notifyListeners()
+        }
+    }
+
     fun addRequestStateListener(listener: () -> Unit) {
         listeners.add(listener)
     }
