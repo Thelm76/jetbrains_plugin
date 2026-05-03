@@ -50,8 +50,8 @@
                 class="dev.sweet.assistant.autocomplete.edit.TriggerEditCompletionAction"
                 text="Trigger Autocomplete Suggestion"
                 description="Request an autocomplete suggestion at the current caret position">
-            <keyboard-shortcut keymap="$default" first-keystroke="alt BACK_SLASH"/>
-            <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt BACK_SLASH"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="alt I"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt I"/>
         </action>
         <action id="dev.sweet.assistant.autocomplete.edit.ClearAutocompleteRejectionCacheAction"
                 class="dev.sweet.assistant.autocomplete.edit.ClearAutocompleteRejectionCacheAction"

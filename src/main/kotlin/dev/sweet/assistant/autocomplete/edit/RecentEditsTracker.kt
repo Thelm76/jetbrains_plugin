@@ -14,8 +14,11 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.EditorCustomElementRenderer
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.EditorKind
+import com.intellij.openapi.editor.Inlay
+import com.intellij.openapi.editor.InlayProperties
 import com.intellij.openapi.editor.actionSystem.EditorActionManager
 import com.intellij.openapi.editor.event.CaretListener
 import com.intellij.openapi.editor.event.DocumentListener
@@ -351,6 +354,8 @@ class RecentEditsTracker(
     private val ioJob = SupervisorJob()
     private val ioScope = CoroutineScope(Dispatchers.IO + ioJob)
     private val requestStatusService = AutocompleteRequestStatusService.getInstance(project)
+    private var manualLoadingInlay: Inlay<EditorCustomElementRenderer>? = null
+    private var manualLoadingRequestTime: Long? = null
     private var currentListener: DocumentListener? = null
     private var currentDocument: Document? = null
     private var currentCaretListener: CaretListener? = null
@@ -1894,9 +1899,52 @@ class RecentEditsTracker(
                         triggeredManually = triggeredManually,
                     )
 
+                if (shouldShowManualLoadingSpinner(triggeredManually)) {
+                    showManualLoadingSpinner(requestEntry)
+                }
+
                 val deferred = CompletableDeferred<Pair<AutocompleteRequestEntry, NextEditAutocompleteResponse?>>()
                 fetchAutocompleteRequest(requestEntry, deferred)
             }
+    }
+
+    private fun shouldShowManualLoadingSpinner(triggeredManually: Boolean): Boolean =
+        triggeredManually && !SweetSettings.getInstance().automaticAutocompleteOn
+
+    private fun showManualLoadingSpinner(requestEntry: AutocompleteRequestEntry) {
+        ApplicationManager.getApplication().invokeLater {
+            hideManualLoadingSpinnerNow()
+
+            val editor = getCurrentEditor() ?: return@invokeLater
+            if (editor.isDisposed || editor.document.text != requestEntry.editorState.documentText) return@invokeLater
+
+            val properties =
+                InlayProperties().apply {
+                    relatesToPrecedingText(true)
+                    disableSoftWrapping(true)
+                }
+
+            manualLoadingInlay =
+                editor.inlayModel.addInlineElement(
+                    requestEntry.editorState.cursorOffset,
+                    properties,
+                    AutocompleteLoadingRenderer(editor),
+                ) as Inlay<EditorCustomElementRenderer>
+            manualLoadingRequestTime = requestEntry.requestTime
+        }
+    }
+
+    private fun hideManualLoadingSpinner(requestTime: Long? = null) {
+        ApplicationManager.getApplication().invokeLater {
+            if (requestTime != null && manualLoadingRequestTime != requestTime) return@invokeLater
+            hideManualLoadingSpinnerNow()
+        }
+    }
+
+    private fun hideManualLoadingSpinnerNow() {
+        manualLoadingInlay?.let { Disposer.dispose(it) }
+        manualLoadingInlay = null
+        manualLoadingRequestTime = null
     }
 
     private fun fetchAutocompleteRequest(
@@ -1932,6 +1980,9 @@ class RecentEditsTracker(
                 fetchJobs.remove(requestEntry.requestTime)
             }
             requestStatusService.requestFinished()
+            if (shouldShowManualLoadingSpinner(requestEntry.triggeredManually)) {
+                hideManualLoadingSpinner(requestEntry.requestTime)
+            }
         }
     }
 
@@ -2524,6 +2575,7 @@ class RecentEditsTracker(
         isDisposed = true
 
         clearAutocomplete(AutocompleteDisposeReason.AUTOCOMPLETE_DISPOSED)
+        hideManualLoadingSpinner()
         acceptanceDisposable?.dispose()
         acceptanceDisposable = null
 

@@ -1,10 +1,13 @@
 package dev.sweet.assistant.settings
 
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBTextField
 import com.intellij.util.ui.JBUI
+import dev.sweet.assistant.autocomplete.edit.TriggerEditCompletionAction
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
@@ -54,7 +57,7 @@ class SweetSettingsConfigurable(
 
         autocompleteEnabled = JCheckBox("Enable autocomplete", settings.nextEditPredictionFlagOn)
         automaticAutocomplete = JCheckBox("Request suggestions automatically while typing", settings.automaticAutocompleteOn)
-        acceptWordOnRightArrow = JCheckBox("Accept next suggested word with Right Arrow", settings.acceptWordOnRightArrow)
+        acceptWordOnRightArrow = JCheckBox("Accept next suggested word with Ctrl+Right Arrow", settings.acceptWordOnRightArrow)
         disableConflictingPlugins = JCheckBox("Automatically disable conflicting full-line completion", settings.disableConflictingPlugins)
         showAutocompleteBadge = JCheckBox("Show autocomplete accept hint", settings.showAutocompleteBadge)
 
@@ -96,6 +99,7 @@ class SweetSettingsConfigurable(
         form.add(sectionLabel("Behavior"))
         form.add(autocompleteEnabled!!)
         form.add(automaticAutocomplete!!)
+        form.add(hintLabel(automaticAutocompleteHint()))
         form.add(acceptWordOnRightArrow!!)
         form.add(disableConflictingPlugins!!)
         form.add(showAutocompleteBadge!!)
@@ -144,6 +148,12 @@ class SweetSettingsConfigurable(
             border = JBUI.Borders.empty(0, 0, 10, 0)
             alignmentX = JComponent.LEFT_ALIGNMENT
         }
+
+    private fun automaticAutocompleteHint(): String {
+        val action = ActionManager.getInstance().getAction(TriggerEditCompletionAction.ACTION_ID)
+        val shortcutText = action?.let { KeymapUtil.getFirstKeyboardShortcutText(it) }.takeUnless { it.isNullOrBlank() } ?: "Alt+I"
+        return "When disabled, request suggestions manually with $shortcutText. To change it, search Keymap for \"Trigger Autocomplete Suggestion\"."
+    }
 
     private fun labeledRow(label: String, component: JComponent): JComponent {
         val panel =
