@@ -41,7 +41,7 @@ intellijPlatform {
                 types.set(listOf(IntelliJPlatformType.WebStorm))
                 channels.set(listOf(ProductRelease.Channel.RELEASE))
                 sinceBuild.set("242")
-                untilBuild.set("243.*")
+                untilBuild.set(provider { null }) // no upper bound
             }
 //            select {
 //                types.set(listOf(IntelliJPlatformType.DataGrip))
@@ -67,7 +67,7 @@ intellijPlatform {
                 )
                 channels.set(listOf(ProductRelease.Channel.RELEASE))
                 sinceBuild.set("241")
-                untilBuild.set("261.*")
+                untilBuild.set(provider { null }) // no upper bound
             }
         }
     }
@@ -86,7 +86,7 @@ tasks {
 
     patchPluginXml {
         sinceBuild.set("241")
-        untilBuild.set("261.*")
+        untilBuild.set(provider { null }) // no upper bound
     }
 
     signPlugin {
