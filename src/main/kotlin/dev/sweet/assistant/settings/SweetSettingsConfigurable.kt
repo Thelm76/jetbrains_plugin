@@ -1,6 +1,7 @@
 package dev.sweet.assistant.settings
 
 import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
@@ -21,6 +22,7 @@ import javax.swing.JPanel
 import javax.swing.JPasswordField
 import javax.swing.JSpinner
 import javax.swing.JTextField
+import javax.swing.SwingUtilities
 import javax.swing.SpinnerNumberModel
 
 class SweetSettingsConfigurable(
@@ -35,10 +37,13 @@ class SweetSettingsConfigurable(
     private var openAiBaseUrl: JTextField? = null
     private var openAiProxy: JTextField? = null
     private var openAiApiKey: JPasswordField? = null
-    private var openAiModel: JTextField? = null
+    private var openAiModel: ModelSelectBox? = null
     private var openAiMaxTokens: JSpinner? = null
     private var openAiTemperature: JSpinner? = null
     private var openAiRequestTimeoutMs: JSpinner? = null
+    private var nextModelRequestId = 0
+    private var cachedModelListParams: ModelListRequestParams? = null
+    private var cachedModelList: List<ModelInfo> = emptyList()
 
     override fun createComponent(): JComponent {
         val panel =
@@ -65,7 +70,12 @@ class SweetSettingsConfigurable(
                 minimumSize = JBUI.size(260, preferredSize.height)
                 toolTipText = "API key sent as Bearer token"
             }
-        openAiModel = wideTextField(settings.openAiModel, "gpt-4o-mini")
+        openAiModel =
+            ModelSelectBox().apply {
+                setCurrentModel(settings.openAiModel)
+                setEmptyLabel("Not selected")
+                modelsReloadHandler = ::requestModelList
+            }
         openAiMaxTokens = compactSpinner(SpinnerNumberModel(settings.openAiMaxTokens, 1, 128000, 1), "#")
         openAiTemperature = compactSpinner(SpinnerNumberModel(settings.openAiTemperature, 0.0, 2.0, 0.1), "0.0")
         openAiRequestTimeoutMs = compactSpinner(SpinnerNumberModel(settings.openAiRequestTimeoutMs, 1000, 600000, 1000), "#")
@@ -166,7 +176,7 @@ class SweetSettingsConfigurable(
             openAiBaseUrl?.text?.trim() != settings.openAiBaseUrl ||
             openAiProxy?.text?.trim() != settings.openAiProxy ||
             passwordText() != settings.openAiApiKey ||
-            openAiModel?.text?.trim() != settings.openAiModel ||
+            openAiModel?.currentModel()?.trim() != settings.openAiModel ||
             (openAiMaxTokens?.value as? Int) != settings.openAiMaxTokens ||
             (openAiTemperature?.value as? Double) != settings.openAiTemperature ||
             (openAiRequestTimeoutMs?.value as? Int) != settings.openAiRequestTimeoutMs ||
@@ -180,7 +190,7 @@ class SweetSettingsConfigurable(
         settings.openAiBaseUrl = openAiBaseUrl?.text.orEmpty()
         settings.openAiProxy = openAiProxy?.text.orEmpty()
         settings.openAiApiKey = passwordText()
-        settings.openAiModel = openAiModel?.text.orEmpty()
+        settings.openAiModel = openAiModel?.currentModel().orEmpty()
         settings.openAiMaxTokens = openAiMaxTokens?.value as? Int ?: settings.openAiMaxTokens
         settings.openAiTemperature = openAiTemperature?.value as? Double ?: settings.openAiTemperature
         settings.openAiRequestTimeoutMs = openAiRequestTimeoutMs?.value as? Int ?: settings.openAiRequestTimeoutMs
@@ -195,7 +205,7 @@ class SweetSettingsConfigurable(
         openAiBaseUrl?.text = settings.openAiBaseUrl
         openAiProxy?.text = settings.openAiProxy
         openAiApiKey?.text = settings.openAiApiKey
-        openAiModel?.text = settings.openAiModel
+        openAiModel?.setCurrentModel(settings.openAiModel)
         openAiMaxTokens?.value = settings.openAiMaxTokens
         openAiTemperature?.value = settings.openAiTemperature
         openAiRequestTimeoutMs?.value = settings.openAiRequestTimeoutMs
@@ -213,4 +223,45 @@ class SweetSettingsConfigurable(
             .ifEmpty { setOf(".env") }
 
     private fun passwordText(): String = String(openAiApiKey?.password ?: CharArray(0)).trim()
+
+    private fun requestModelList(
+        target: ModelSelectBox,
+        generation: Int,
+    ) {
+        val params =
+            ModelListRequestParams(
+                baseUrl = openAiBaseUrl?.text.orEmpty().trim(),
+                apiKey = passwordText(),
+                proxyText = openAiProxy?.text.orEmpty().trim(),
+            )
+
+        if (cachedModelListParams == params) {
+            target.setModels(cachedModelList)
+            return
+        }
+
+        val requestId = ++nextModelRequestId
+        ApplicationManager.getApplication().executeOnPooledThread {
+            try {
+                val models = ModelListLoader.loadModels(params.baseUrl, params.apiKey, params.proxyText)
+                SwingUtilities.invokeLater {
+                    if (requestId != nextModelRequestId || target.currentReloadGeneration() != generation) return@invokeLater
+                    cachedModelListParams = params
+                    cachedModelList = models
+                    target.setModels(models)
+                }
+            } catch (e: Exception) {
+                SwingUtilities.invokeLater {
+                    if (requestId != nextModelRequestId || target.currentReloadGeneration() != generation) return@invokeLater
+                    target.setLoadError(e.message ?: "Failed to load models.")
+                }
+            }
+        }
+    }
+
+    private data class ModelListRequestParams(
+        val baseUrl: String,
+        val apiKey: String,
+        val proxyText: String,
+    )
 }
