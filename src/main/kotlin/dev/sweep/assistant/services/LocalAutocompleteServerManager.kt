@@ -462,12 +462,19 @@ class LocalAutocompleteServerManager : Disposable {
             llamaServerPath,
             "-m", modelPath,
             "--port", port.toString(),
-            "-ngl", "-1",
-            "--flash-attn", "auto",
+            "-ngl", "99",
+            "--flash-attn", "on",
             "--spec-type", "ngram-mod",
-            "--spec-ngram-mod-n-match", "24",
-            "--spec-ngram-mod-n-min", "48",
-            "--spec-ngram-mod-n-max", "64",
+            "--spec-ngram-size-n", "24",
+            "--draft-min", "48",
+            "--draft-max", "64",
+//            "--spec-ngram-mod-n-match", "24", // latest llama.cpp
+//            "--spec-ngram-mod-n-min", "48",
+//            "--spec-ngram-mod-n-max", "64",
+            "--cache-type-k", "turbo4",
+            "--cache-type-v", "turbo3",
+            "--no-mmap",
+            "--mlock"
         )
     }
 
