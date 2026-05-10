@@ -16,8 +16,6 @@ data class SweetConfigState(
     @Deprecated("Autocomplete is local-only.")
     var isAutocompleteLocalMode: Boolean = true,
     @Deprecated("Moved to application-level SweetSettings.")
-    var showAutocompleteBadge: Boolean = false,
-    @Deprecated("Moved to application-level SweetSettings.")
     var autocompleteExclusionPatterns: Set<String> = emptySet(),
     @Deprecated("Moved to application-level SweetSettings.")
     var autocompleteExclusionPatternsV2: Set<String> = setOf(".env"),
@@ -69,7 +67,6 @@ class SweetConfig(
             settings.autocompleteExclusionPatterns = migratedPatterns
         }
 
-        settings.showAutocompleteBadge = settings.showAutocompleteBadge || oldState.showAutocompleteBadge
         settings.hideAutocompleteExclusionBanner = settings.hideAutocompleteExclusionBanner || oldState.hideAutocompleteExclusionBanner
         settings.disableConflictingPlugins = settings.disableConflictingPlugins && oldState.disableConflictingPlugins
     }
@@ -79,8 +76,6 @@ class SweetConfig(
     fun isAutocompleteLocalMode(): Boolean = true
 
     fun isPrivacyModeEnabled(): Boolean = false
-
-    fun isShowAutocompleteBadge(): Boolean = SweetSettings.getInstance().showAutocompleteBadge
 
     fun getAutocompleteExclusionPatterns(): Set<String> = SweetSettings.getInstance().autocompleteExclusionPatterns
 

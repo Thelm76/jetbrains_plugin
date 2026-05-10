@@ -13,7 +13,6 @@ import com.intellij.openapi.editor.actionSystem.EditorActionManager
 import com.intellij.openapi.editor.impl.EditorComponentImpl
 import com.intellij.openapi.keymap.KeymapManagerListener
 import com.intellij.openapi.project.Project
-import dev.sweet.assistant.settings.SweetMetaData
 import dev.sweet.assistant.settings.SweetSettings
 import dev.sweet.assistant.utils.SweetConstants
 import dev.sweet.assistant.utils.getKeyStrokesForAction
@@ -316,32 +315,6 @@ class EditorActionsRouterService : Disposable {
             }
         }
 
-        // We only mark metadata for first-time lookup usage; we do not change behavior
-        wrap(IdeActions.ACTION_CHOOSE_LOOKUP_ITEM) { original ->
-            object : EditorActionHandler() {
-                override fun doExecute(
-                    editor: Editor,
-                    caret: Caret?,
-                    dataContext: DataContext,
-                ) {
-                    // Guard: don't process actions for disposed editors/projects
-                    if (editor.isDisposed || editor.project?.isDisposed == true) {
-                        return
-                    }
-
-                    val meta = SweetMetaData.getInstance()
-                    if (!meta.hasUsedLookupItem) meta.hasUsedLookupItem = true
-                    original.execute(editor, caret, dataContext)
-                }
-
-                override fun isEnabledForCaret(
-                    editor: Editor,
-                    caret: Caret,
-                    dataContext: DataContext,
-                ): Boolean = originals[IdeActions.ACTION_CHOOSE_LOOKUP_ITEM]?.isEnabled(editor, caret, dataContext) ?: true
-            }
-        }
-
         // Note: All accept/reject keybindings are now handled dynamically via the allPossibleActions loop above.
         // Only the keybindings explicitly configured by the user will trigger accept/reject behavior.
         // Special cases (caret movement rejection, Alt-Right accept word) are also handled in that loop.
@@ -367,12 +340,7 @@ class EditorActionsRouterService : Disposable {
 
     private fun trackerFor(editor: Editor): RecentEditsTracker? {
         val project: Project = editor.project ?: return null
-        // Only delegate if the feature is enabled to avoid instantiating trackers unnecessarily
-        return if (SweetSettings.getInstance().nextEditPredictionFlagOn) {
-            RecentEditsTracker.getInstance(project)
-        } else {
-            null
-        }
+        return RecentEditsTracker.getInstance(project)
     }
 
     override fun dispose() {

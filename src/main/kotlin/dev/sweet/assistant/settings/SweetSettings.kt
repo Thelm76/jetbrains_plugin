@@ -15,14 +15,12 @@ import com.intellij.util.xmlb.XmlSerializerUtil
 )
 class SweetSettings : PersistentStateComponent<SweetSettings> {
     companion object {
-        private const val DEFAULT_NEXT_EDIT_PREDICTION_ON = true
         private const val DEFAULT_AUTOMATIC_AUTOCOMPLETE_ON = true
         private const val DEFAULT_ACCEPT_WORD_ON_RIGHT_ARROW = true
         private const val DEFAULT_AUTOCOMPLETE_DEBOUNCE_MS = 10L
         private const val DEFAULT_DISABLE_CONFLICTING_PLUGINS = true
         private const val DEFAULT_OPENAI_BASE_URL = "https://openrouter.ai/api/v1"
         private const val DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
-        private const val DEFAULT_OPENAI_TITLE = "Sweet Autocomplete Adapter"
         private const val DEFAULT_OPENAI_MAX_TOKENS = 512
         private const val DEFAULT_OPENAI_TEMPERATURE = 0.0
         private const val DEFAULT_OPENAI_REQUEST_TIMEOUT_MS = 30_000
@@ -38,16 +36,6 @@ class SweetSettings : PersistentStateComponent<SweetSettings> {
             val TOPIC = Topic.create("Sweet autocomplete settings changed", SettingsChangedNotifier::class.java)
         }
     }
-
-    var nextEditPredictionFlagOn: Boolean = DEFAULT_NEXT_EDIT_PREDICTION_ON
-        set(value) {
-            if (value != field) {
-                field = value
-                notifySettingsChanged()
-            } else {
-                field = value
-            }
-        }
 
     var automaticAutocompleteOn: Boolean = DEFAULT_AUTOMATIC_AUTOCOMPLETE_ON
         set(value) {
@@ -76,16 +64,6 @@ class SweetSettings : PersistentStateComponent<SweetSettings> {
         }
 
     var disableConflictingPlugins: Boolean = DEFAULT_DISABLE_CONFLICTING_PLUGINS
-        set(value) {
-            if (value != field) {
-                field = value
-                notifySettingsChanged()
-            } else {
-                field = value
-            }
-        }
-
-    var showAutocompleteBadge: Boolean = false
         set(value) {
             if (value != field) {
                 field = value
@@ -124,12 +102,6 @@ class SweetSettings : PersistentStateComponent<SweetSettings> {
     var openAiModel: String = DEFAULT_OPENAI_MODEL
         set(value) {
             field = value.trim().ifBlank { DEFAULT_OPENAI_MODEL }
-            notifySettingsChanged()
-        }
-
-    var openAiTitle: String = DEFAULT_OPENAI_TITLE
-        set(value) {
-            field = value.trim().ifBlank { DEFAULT_OPENAI_TITLE }
             notifySettingsChanged()
         }
 
@@ -187,7 +159,6 @@ class SweetSettings : PersistentStateComponent<SweetSettings> {
         openAiProxy = openAiProxy
         openAiApiKey = openAiApiKey
         openAiModel = openAiModel
-        openAiTitle = openAiTitle
         openAiMaxTokens = openAiMaxTokens
         openAiTemperature = openAiTemperature
         openAiRequestTimeoutMs = openAiRequestTimeoutMs

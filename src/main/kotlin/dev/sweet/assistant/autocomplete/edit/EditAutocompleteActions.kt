@@ -6,7 +6,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
-import dev.sweet.assistant.settings.SweetSettings
 
 /**
  * Base class for edit completion actions (accept/reject).
@@ -114,8 +113,7 @@ class TriggerEditCompletionAction : AnAction() {
         event.presentation.isEnabledAndVisible =
             project != null &&
             !project.isDisposed &&
-            editor != null &&
-            SweetSettings.getInstance().nextEditPredictionFlagOn
+            editor != null
     }
 
     override fun actionPerformed(event: AnActionEvent) {

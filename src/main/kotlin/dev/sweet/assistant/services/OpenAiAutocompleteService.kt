@@ -42,6 +42,7 @@ class OpenAiAutocompleteService(
         private const val RECENT_CHANGES_LIMIT = 6_000
         private const val CHUNK_LIMIT = 4_000
         private const val MAX_LOGGED_ERROR_BODY_LENGTH = 2_000
+        private const val REQUEST_TITLE = "Sweet Autocomplete"
 
         fun getInstance(project: Project): OpenAiAutocompleteService = project.getService(OpenAiAutocompleteService::class.java)
     }
@@ -96,11 +97,7 @@ class OpenAiAutocompleteService(
                 .timeout(timeout)
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer ${settings.openAiApiKey}")
-                .apply {
-                    if (settings.openAiTitle.isNotBlank()) {
-                        header("X-Title", settings.openAiTitle)
-                    }
-                }
+                .header("X-Title", REQUEST_TITLE)
                 .POST(HttpRequest.BodyPublishers.ofString(postData))
                 .build()
 

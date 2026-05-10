@@ -8,7 +8,6 @@ import com.intellij.codeInsight.daemon.impl.analysis.HighlightInfoHolder
 import com.intellij.lang.LanguageAnnotators
 import com.intellij.lang.annotation.Annotator
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.diagnostic.Logger
@@ -24,7 +23,6 @@ import com.intellij.openapi.editor.highlighter.HighlighterIterator
 import com.intellij.openapi.editor.impl.DocumentMarkupModel
 import com.intellij.openapi.editor.impl.EditorImpl
 import com.intellij.openapi.editor.markup.TextAttributes
-import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.DumbService
@@ -41,7 +39,6 @@ import com.intellij.psi.SmartPointerManager
 import com.intellij.psi.impl.source.resolve.FileContextUtil
 import com.intellij.psi.tree.IElementType
 import com.intellij.testFramework.LightVirtualFile
-import com.intellij.ui.JBColor
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.concurrency.annotations.RequiresBackgroundThread
 import com.intellij.util.concurrency.annotations.RequiresReadLock
@@ -49,9 +46,6 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import dev.sweet.assistant.autocomplete.adjustFullContextForIde
 import dev.sweet.assistant.autocomplete.shouldRunAnnotatorsForSemanticHighlights
-import dev.sweet.assistant.components.SweetConfig
-import dev.sweet.assistant.settings.SweetMetaData
-import dev.sweet.assistant.theme.SweetIcons
 import dev.sweet.assistant.theme.withAlpha
 import dev.sweet.assistant.utils.*
 import java.awt.*
@@ -67,7 +61,6 @@ class GhostTextRenderer(
     private val editor: Editor,
     private val text: String,
     private val attributes: TextAttributes,
-    private val showHint: Boolean = false,
     private val project: Project? = null,
     private val fileExtension: String? = null,
     private val offset: Int? = null,
@@ -116,39 +109,8 @@ class GhostTextRenderer(
     val font
         get() = UIUtil.getFontWithFallback(editor.colorsScheme.getFont(EditorFontType.PLAIN))
     private val isCompletionPopupVisible = CompletionService.getCompletionService().currentCompletion != null
-    private val hintText: String
-        get() {
-            val action = ActionManager.getInstance().getAction(AcceptEditCompletionAction.ACTION_ID)
-            val shortcutText = action?.let { KeymapUtil.getFirstKeyboardShortcutText(it) }
-            return if (!shortcutText.isNullOrEmpty()) shortcutText else "Tab"
-        }
-    private val hintFont = Font(Font.SANS_SERIF, Font.PLAIN, font.size - 1)
-    private val shouldShowHint: Boolean
-        get() {
-            val config = project?.let { SweetConfig.getInstance(it) }
-
-            val metadata = SweetMetaData.getInstance()
-            // Show if user explicitly enabled it OR if user hasn't disabled it and they're within first 10 accepts
-            return showHint && (config?.isShowAutocompleteBadge() == true || metadata.autocompleteAcceptCount <= 3)
-        }
-
     // Cached values to avoid repeated calculations in paint()
     private val cachedFontMetrics by lazy { editor.contentComponent.getFontMetrics(font) }
-    private val cachedHintFontMetrics by lazy { editor.contentComponent.getFontMetrics(hintFont) }
-    private val cachedHintWidth by lazy {
-        val tabText = hintText
-        val acceptText = " to accept"
-        val marginBetweenTextAndHint = 16
-        val pillHorizontalPadding = 4
-        val spaceBetweenTabAndAccept = 2
-        val icon = SweetIcons.SweetIcon
-        val iconGap = JBUI.scale(4)
-
-        marginBetweenTextAndHint +
-            cachedHintFontMetrics.stringWidth(tabText) + pillHorizontalPadding * 2 +
-            spaceBetweenTabAndAccept + cachedHintFontMetrics.stringWidth(acceptText) +
-            iconGap + icon.iconWidth + 4
-    }
 
     // Cache for derived fonts to avoid repeated font.deriveFont() calls
     private val derivedFontCache = mutableMapOf<Int, Font>()
@@ -944,60 +906,6 @@ class GhostTextRenderer(
         return result
     }
 
-    private fun drawTabHint(
-        g: Graphics,
-        textWidth: Int,
-        targetRegion: Rectangle,
-        inlay: Inlay<*>,
-        additionalYOffset: Int = 0,
-    ) {
-        if (!shouldShowHint) return
-
-        val originalFont = g.font
-        g.font = hintFont
-
-        val tabText = hintText
-        val acceptText = " to accept"
-
-        val tabWidth = g.fontMetrics.stringWidth(tabText)
-        val tabHeight = g.fontMetrics.height - 2
-
-        val marginBetweenTextAndHint = 16
-        val iconGap = JBUI.scale(4)
-        val spaceBetweenTabAndAccept = 2
-        val icon = SweetIcons.SweetIcon
-
-        val baselineY = targetRegion.y + inlay.editor.ascent + additionalYOffset
-        val iconY =
-            baselineY - g.fontMetrics.ascent + (g.fontMetrics.height - icon.iconHeight) / 2
-        // Start by placing the Tab pill right after the ghost text
-        val tabX = targetRegion.x + textWidth + marginBetweenTextAndHint
-        val tabY = baselineY - tabHeight + 2
-
-        val horizontalPadding = 4
-
-        g.color = attributes.foregroundColor.withAlpha(0.5f)
-        val g2d = g.create() as Graphics2D
-        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-        g2d.fillRoundRect(tabX, tabY, tabWidth + horizontalPadding * 2, tabHeight, 8, 8)
-        g2d.dispose()
-
-        g.color = attributes.foregroundColor
-        val acceptX = tabX + tabWidth + horizontalPadding * 2 + spaceBetweenTabAndAccept
-        g.drawString(acceptText, acceptX, baselineY)
-
-        // Now paint the Sweet icon to the right of the accept text
-        val acceptWidth = g.fontMetrics.stringWidth(acceptText)
-        val iconX = acceptX + acceptWidth + iconGap
-        icon.paintIcon(inlay.editor.contentComponent, g, iconX, iconY)
-
-        g.color = JBColor.WHITE
-        g.drawString(tabText, tabX + horizontalPadding, baselineY)
-
-        g.font = originalFont
-        g.color = attributes.foregroundColor
-    }
-
     override fun calcHeightInPixels(inlay: Inlay<*>): Int {
         val lineCount = text.lines().size.coerceAtLeast(1)
         return (inlay.editor as EditorImpl).lineHeight * lineCount
@@ -1045,8 +953,7 @@ class GhostTextRenderer(
                 cachedFontMetrics.getStringWidthWithTabs(effectiveText, inlay.editor)
             }
 
-        val hintWidth = if (shouldShowHint) cachedHintWidth else 0
-        return (textWidth + hintWidth).coerceAtLeast(1)
+        return textWidth.coerceAtLeast(1)
     }
 
     override fun paint(
@@ -1082,7 +989,6 @@ class GhostTextRenderer(
 
             // Paint segments for this line
             var currentX = targetRegion.x
-            val startX = currentX // Track starting position for hint width calculation
             var remainingTrim = if (i == 0) prefixTrimCount else 0 // Only trim on first line
 
             // If the line contains tabs, fall back to per-chunk drawing (tabs need manual expansion)
@@ -1214,12 +1120,6 @@ class GhostTextRenderer(
                         startX = currentX,
                         honorTabs = true,
                     )
-            }
-
-            // Show hint on first line only - reuse the width from drawing
-            if (i == 0 && showHint) {
-                val textWidth = currentX - startX
-                drawTabHint(g, textWidth, targetRegion, inlay, additionalYOffset)
             }
 
             additionalYOffset += editor.lineHeight

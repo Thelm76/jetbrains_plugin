@@ -38,7 +38,6 @@ import dev.sweet.assistant.autocomplete.Debouncer
 import dev.sweet.assistant.components.SweetConfig
 import dev.sweet.assistant.services.*
 import dev.sweet.assistant.services.FeatureFlagService
-import dev.sweet.assistant.settings.SweetMetaData
 import dev.sweet.assistant.settings.SweetSettings
 import dev.sweet.assistant.utils.*
 import kotlinx.coroutines.*
@@ -1144,8 +1143,7 @@ class RecentEditsTracker(
 
     init {
         SweetSettings.getInstance().runNowAndOnSettingsChange(project, this) {
-            if (nextEditPredictionFlagOn &&
-                editorFactoryListener == null &&
+            if (editorFactoryListener == null &&
                 SweetConstants.GATEWAY_MODE != SweetConstants.GatewayMode.HOST
             ) {
                 // NEW: Setup editor factory listener
@@ -1204,11 +1202,6 @@ class RecentEditsTracker(
                 setupCommandListener()
 
                 launchAutocompleteConsumerWorker()
-            } else if (!nextEditPredictionFlagOn && editorFactoryListener != null) {
-                // Cleanup
-                cleanupFocusTracking()
-                consumerJob?.cancel()
-                consumerJob = null
             }
 
             if (SweetConstants.GATEWAY_MODE == SweetConstants.GatewayMode.HOST) {
@@ -1339,15 +1332,7 @@ class RecentEditsTracker(
                     }
 
                     acceptanceDisposable?.dispose()
-                    acceptanceDisposable =
-                        it.accept(editor).also { disposable ->
-                            if (it is AutocompleteSuggestion.GhostTextSuggestion ||
-                                it is AutocompleteSuggestion.PopupSuggestion
-                            ) {
-                                val metadata = SweetMetaData.getInstance()
-                                metadata.autocompleteAcceptCount++
-                            }
-                        }
+                    acceptanceDisposable = it.accept(editor)
 //                    if (suggestionQueue.isEmpty()) {
 //                        FileDocumentManager.getInstance().saveDocument(editor.document)
 //                    }
@@ -1862,14 +1847,6 @@ class RecentEditsTracker(
         currentJob?.cancel()
         currentJob =
             scope.launch {
-                // Check if autocomplete is snoozed
-                if (AutocompleteSnoozeService
-                        .getInstance(project)
-                        .isAutocompleteSnooze()
-                ) {
-                    return@launch
-                }
-
                 if (getCurrentEditor()?.document?.isWritable == false) {
                     return@launch
                 }

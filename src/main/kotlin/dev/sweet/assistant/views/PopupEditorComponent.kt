@@ -2,7 +2,6 @@ package dev.sweet.assistant.views
 
 import com.intellij.codeInsight.completion.CompletionService
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.EditorKind
@@ -13,7 +12,6 @@ import com.intellij.openapi.editor.markup.HighlighterLayer
 import com.intellij.openapi.editor.markup.HighlighterTargetArea
 import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.editor.markup.TextAttributes
-import com.intellij.openapi.keymap.KeymapUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
@@ -27,12 +25,8 @@ import com.intellij.ui.awt.RelativePoint
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBViewport
 import com.intellij.util.ui.JBUI
-import dev.sweet.assistant.autocomplete.edit.AcceptEditCompletionAction
-import dev.sweet.assistant.components.SweetConfig
 import dev.sweet.assistant.services.IdeaVimIntegrationService
-import dev.sweet.assistant.settings.SweetMetaData
 import dev.sweet.assistant.theme.SweetColors
-import dev.sweet.assistant.theme.SweetIcons
 import dev.sweet.assistant.utils.DiffGroup
 import dev.sweet.assistant.utils.computeDiffGroups
 import dev.sweet.assistant.utils.scaled
@@ -340,11 +334,6 @@ class PopupEditorComponent(
             JPanel(BorderLayout()).apply {
                 border = JBUI.Borders.empty(0, 4)
                 background = editor.backgroundColor
-                val config = SweetConfig.getInstance(project)
-                val sweetMetaData = SweetMetaData.getInstance()
-                // Show footer if user explicitly enabled it OR if user hasn't disabled it and they're within first 10 accepts
-                val showFooter = config.isShowAutocompleteBadge() || sweetMetaData.autocompleteAcceptCount <= 3
-
                 // Calculate the actual text height based on line count and line height
                 val lineCount = editor.document.lineCount
                 val lineHeight = editor.lineHeight
@@ -353,7 +342,7 @@ class PopupEditorComponent(
                 preferredSize =
                     Dimension(
                         editor.contentComponent.preferredSize.width + 40, // this adds 32px of right padding
-                        textHeight + if (showFooter) 20 else 0,
+                        textHeight,
                     )
                 add(editor.contentComponent, BorderLayout.CENTER)
 
@@ -371,24 +360,6 @@ class PopupEditorComponent(
                         charsDeleted += hunk.deletions.length
                         charsAdded += hunk.additions.length
                     }
-                }
-
-                if (showFooter) {
-                    val action = ActionManager.getInstance().getAction(AcceptEditCompletionAction.ACTION_ID)
-                    val shortcutText = action?.let { KeymapUtil.getFirstKeyboardShortcutText(it) }
-                    val keyText = if (!shortcutText.isNullOrEmpty()) shortcutText else "Tab"
-
-                    JLabel(
-                        "<html><b>$keyText</b> to accept</html>",
-                        SwingConstants.CENTER,
-                    ).apply {
-                        font = font.deriveFont(Font.PLAIN, 11f)
-                        foreground = JBColor.GRAY
-                        border = JBUI.Borders.empty()
-                        icon = SweetIcons.SweetIcon
-                        horizontalTextPosition = SwingConstants.LEFT
-                        iconTextGap = JBUI.scale(4)
-                    }.also { add(it, BorderLayout.SOUTH) }
                 }
             }
         }

@@ -20,7 +20,6 @@
         <notificationGroup id="Sweet Autocomplete" displayType="BALLOON"/>
         <notificationGroup id="Sweet Plugin Conflicts" displayType="BALLOON"/>
         <applicationService serviceImplementation="dev.sweet.assistant.settings.SweetSettings"/>
-        <applicationService serviceImplementation="dev.sweet.assistant.settings.SweetMetaData"/>
         <projectConfigurable
                 groupId="tools"
                 displayName="Sweet Autocomplete"
